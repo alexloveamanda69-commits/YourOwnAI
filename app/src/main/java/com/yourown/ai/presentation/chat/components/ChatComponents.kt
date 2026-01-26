@@ -20,12 +20,26 @@ fun ChatTopBar(
     conversationTitle: String,
     selectedModel: com.yourown.ai.domain.model.ModelProvider?,
     availableModels: List<com.yourown.ai.domain.model.ModelProvider>,
+    localModels: Map<com.yourown.ai.domain.model.LocalModel, com.yourown.ai.domain.model.LocalModelInfo>,
+    isSearchMode: Boolean,
+    searchQuery: String,
+    currentSearchIndex: Int,
+    searchMatchCount: Int,
     onBackClick: () -> Unit,
     onEditTitle: () -> Unit,
     onModelSelect: (com.yourown.ai.domain.model.ModelProvider) -> Unit,
     onDownloadModel: (com.yourown.ai.domain.model.LocalModel) -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onSearchClick: () -> Unit = {},
+    onSearchQueryChange: (String) -> Unit = {},
+    onSearchNext: () -> Unit = {},
+    onSearchPrevious: () -> Unit = {},
+    onSearchClose: () -> Unit = {},
+    onSystemPromptClick: () -> Unit = {},
+    onExportChatClick: () -> Unit = {}
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+    
     Surface(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 3.dp
@@ -35,39 +49,138 @@ fun ChatTopBar(
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
         ) {
-            // Top row: Back, Title+Edit, Settings
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Back button
-                IconButton(onClick = onBackClick) {
-                    Icon(Icons.Default.ArrowBack, "Back")
-                }
-                
-                // Title + Edit button
+            if (isSearchMode) {
+                // Search mode: Search field with navigation buttons
                 Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = conversationTitle,
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Search in chat...") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                        ),
+                        trailingIcon = {
+                            if (searchMatchCount > 0) {
+                                Text(
+                                    text = "${currentSearchIndex + 1}/$searchMatchCount",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                )
+                            }
+                        }
                     )
+                    
+                    Spacer(modifier = Modifier.width(4.dp))
+                    
+                    // Navigate up button
                     IconButton(
-                        onClick = onEditTitle,
-                        modifier = Modifier.size(32.dp)
+                        onClick = onSearchPrevious,
+                        enabled = searchMatchCount > 0
                     ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "Edit Title",
-                            modifier = Modifier.size(16.dp)
+                        Icon(Icons.Default.KeyboardArrowUp, "Previous match")
+                    }
+                    
+                    // Navigate down button
+                    IconButton(
+                        onClick = onSearchNext,
+                        enabled = searchMatchCount > 0
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowDown, "Next match")
+                    }
+                    
+                    // Close search button
+                    IconButton(onClick = onSearchClose) {
+                        Icon(Icons.Default.Close, "Close search")
+                    }
+                }
+            } else {
+                // Normal mode: Back, Title+Edit, More Menu, Settings
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Back button
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                    
+                    // Title + Edit button
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = conversationTitle,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1
+                        )
+                        IconButton(
+                            onClick = onEditTitle,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit Title",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    
+                    // More menu button
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, "More options")
+                        }
+                    
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Поиск по чату") },
+                            onClick = {
+                                showMenu = false
+                                onSearchClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Search, contentDescription = null)
+                            }
+                        )
+                        
+                        DropdownMenuItem(
+                            text = { Text("Системный промпт") },
+                            onClick = {
+                                showMenu = false
+                                onSystemPromptClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Person, contentDescription = null)
+                            }
+                        )
+                        
+                        DropdownMenuItem(
+                            text = { Text("Скачать чат") },
+                            onClick = {
+                                showMenu = false
+                                onExportChatClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Download, contentDescription = null)
+                            }
                         )
                     }
                 }
@@ -76,6 +189,7 @@ fun ChatTopBar(
                 IconButton(onClick = onSettingsClick) {
                     Icon(Icons.Default.Settings, "Settings")
                 }
+            }
             }
             
             // Model selector row
@@ -88,6 +202,7 @@ fun ChatTopBar(
                 ModelSelector(
                     selectedModel = selectedModel,
                     availableModels = availableModels,
+                    localModels = localModels,
                     onModelSelect = onModelSelect,
                     onDownloadModel = onDownloadModel
                 )

@@ -77,7 +77,7 @@ fun SystemPromptDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    placeholder = { Text("Describe your AI's personality...") },
+                    placeholder = { Text("Ты цифровой партнёр...") },
                     maxLines = Int.MAX_VALUE
                 )
                 

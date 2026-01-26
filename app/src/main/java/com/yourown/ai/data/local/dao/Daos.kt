@@ -177,3 +177,24 @@ interface SystemPromptDao {
     @Query("UPDATE system_prompts SET usageCount = usageCount + 1 WHERE id = :id")
     suspend fun incrementUsageCount(id: String)
 }
+
+@Dao
+interface KnowledgeDocumentDao {
+    @Query("SELECT * FROM knowledge_documents ORDER BY createdAt DESC")
+    fun getAllDocuments(): Flow<List<KnowledgeDocumentEntity>>
+    
+    @Query("SELECT * FROM knowledge_documents WHERE id = :id")
+    suspend fun getDocumentById(id: String): KnowledgeDocumentEntity?
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDocument(document: KnowledgeDocumentEntity)
+    
+    @Update
+    suspend fun updateDocument(document: KnowledgeDocumentEntity)
+    
+    @Delete
+    suspend fun deleteDocument(document: KnowledgeDocumentEntity)
+    
+    @Query("DELETE FROM knowledge_documents WHERE id = :id")
+    suspend fun deleteById(id: String)
+}

@@ -12,11 +12,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.yourown.ai.presentation.chat.components.*
 import kotlinx.coroutines.launch
+import android.content.Intent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,6 +32,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
     
     // Check if scrolled to bottom
     val isAtBottom by remember {
@@ -63,6 +66,16 @@ fun ChatScreen(
         }
     }
     
+    // Auto-scroll to search result
+    LaunchedEffect(uiState.currentSearchIndex, uiState.searchQuery) {
+        if (uiState.isSearchMode && uiState.searchMatchCount > 0) {
+            val messageIndex = viewModel.getCurrentSearchMessageIndex()
+            messageIndex?.let {
+                listState.animateScrollToItem(it)
+            }
+        }
+    }
+    
     // Scroll to bottom function
     fun scrollToBottom() {
         coroutineScope.launch {
@@ -89,11 +102,23 @@ fun ChatScreen(
                     conversationTitle = uiState.currentConversation?.title ?: "YourOwnAI",
                     selectedModel = uiState.selectedModel,
                     availableModels = uiState.availableModels,
+                    localModels = uiState.localModels,
+                    isSearchMode = uiState.isSearchMode,
+                    searchQuery = uiState.searchQuery,
+                    currentSearchIndex = uiState.currentSearchIndex,
+                    searchMatchCount = uiState.searchMatchCount,
                     onBackClick = onNavigateBack,
                     onEditTitle = viewModel::showEditTitleDialog,
                     onModelSelect = viewModel::selectModel,
                     onDownloadModel = viewModel::downloadModel,
-                    onSettingsClick = onNavigateToSettings
+                    onSettingsClick = onNavigateToSettings,
+                    onSearchClick = viewModel::toggleSearchMode,
+                    onSearchQueryChange = viewModel::updateSearchQuery,
+                    onSearchNext = viewModel::navigateToNextSearchResult,
+                    onSearchPrevious = viewModel::navigateToPreviousSearchResult,
+                    onSearchClose = viewModel::toggleSearchMode,
+                    onSystemPromptClick = viewModel::showSystemPromptDialog,
+                    onExportChatClick = viewModel::exportChat
                 )
             }
             
@@ -135,7 +160,8 @@ fun ChatScreen(
                                     },
                                     onDelete = {
                                         viewModel.deleteMessage(message.id)
-                                    }
+                                    },
+                                    searchQuery = if (uiState.isSearchMode) uiState.searchQuery else ""
                                 )
                             }
 
@@ -215,6 +241,30 @@ fun ChatScreen(
         RequestLogsDialog(
             logs = uiState.selectedMessageLogs!!,
             onDismiss = viewModel::hideRequestLogs
+        )
+    }
+    
+    if (uiState.showSystemPromptDialog) {
+        SystemPromptDialog(
+            systemPrompts = uiState.systemPrompts,
+            selectedPromptId = uiState.selectedSystemPromptId,
+            onDismiss = viewModel::hideSystemPromptDialog,
+            onSelectPrompt = viewModel::selectSystemPrompt
+        )
+    }
+    
+    if (uiState.showExportDialog && uiState.exportedChatText != null) {
+        ExportChatDialog(
+            chatText = uiState.exportedChatText!!,
+            onDismiss = viewModel::hideExportDialog,
+            onShare = {
+                val shareIntent = Intent().apply {
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_TEXT, uiState.exportedChatText)
+                    type = "text/plain"
+                }
+                context.startActivity(Intent.createChooser(shareIntent, "Поделиться чатом"))
+            }
         )
     }
 }

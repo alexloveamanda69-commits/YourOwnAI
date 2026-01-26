@@ -195,17 +195,11 @@ class LlamaServiceImpl @Inject constructor(
             builder.append("Context: $userContext\n\n")
         }
         
-        // Add conversation history (limited by messageHistoryLimit)
-        val historyLimit = config.messageHistoryLimit * 2 // pairs = user + assistant
-        val relevantMessages = messages.takeLast(historyLimit)
-        
-        for (message in relevantMessages) {
-            val role = when (message.role) {
-                MessageRole.USER -> "User"
-                MessageRole.ASSISTANT -> "Assistant"
-                MessageRole.SYSTEM -> "System"
-            }
-            builder.append("$role: ${message.content}\n\n")
+        // For local models, only use the last user message
+        // (they work best with single request-response pairs)
+        val lastUserMessage = messages.lastOrNull { it.role == MessageRole.USER }
+        if (lastUserMessage != null) {
+            builder.append("User: ${lastUserMessage.content}\n\n")
         }
         
         // Add prompt for assistant response

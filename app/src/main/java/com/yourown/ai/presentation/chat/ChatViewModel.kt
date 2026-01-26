@@ -36,12 +36,21 @@ data class ChatUiState(
     val availableModels: List<ModelProvider> = emptyList(),
     val selectedModel: ModelProvider? = null,
     val aiConfig: AIConfig = AIConfig(),
+    val systemPrompts: List<com.yourown.ai.domain.model.SystemPrompt> = emptyList(),
+    val selectedSystemPromptId: String? = null,
     val isLoading: Boolean = false,
     val shouldScrollToBottom: Boolean = false,
     val isDrawerOpen: Boolean = false,
     val showEditTitleDialog: Boolean = false,
     val showRequestLogsDialog: Boolean = false,
+    val isSearchMode: Boolean = false,
+    val showSystemPromptDialog: Boolean = false,
+    val showExportDialog: Boolean = false,
     val selectedMessageLogs: String? = null,
+    val exportedChatText: String? = null,
+    val searchQuery: String = "",
+    val currentSearchIndex: Int = 0,
+    val searchMatchCount: Int = 0,
     val inputText: String = "",
     val isInitialConversationsLoad: Boolean = true
 )
@@ -53,6 +62,7 @@ class ChatViewModel @Inject constructor(
     private val localModelRepository: LocalModelRepository,
     private val apiKeyRepository: ApiKeyRepository,
     private val aiConfigRepository: com.yourown.ai.data.repository.AIConfigRepository,
+    private val systemPromptRepository: com.yourown.ai.data.repository.SystemPromptRepository,
     private val settingsManager: SettingsManager,
     private val llamaService: LlamaService,
     private val aiService: AIService
@@ -67,6 +77,22 @@ class ChatViewModel @Inject constructor(
         observeApiKeys()
         observeSettings()
         loadSavedModel()
+        observeSystemPrompts()
+        initializeDefaultPrompts()
+    }
+    
+    private fun initializeDefaultPrompts() {
+        viewModelScope.launch {
+            systemPromptRepository.initializeDefaultPrompts()
+        }
+    }
+    
+    private fun observeSystemPrompts() {
+        viewModelScope.launch {
+            systemPromptRepository.getAllPrompts().collect { prompts ->
+                _uiState.update { it.copy(systemPrompts = prompts) }
+            }
+        }
     }
     
     private fun loadConversations() {
@@ -175,11 +201,9 @@ class ChatViewModel @Inject constructor(
     private fun updateAvailableModels() {
         val models = mutableListOf<ModelProvider>()
         
-        // Add downloaded local models
+        // Add ALL local models (downloaded or not)
         _uiState.value.localModels.forEach { (model, info) ->
-            if (info.status is DownloadStatus.Downloaded) {
-                models.add(ModelProvider.Local(model))
-            }
+            models.add(ModelProvider.Local(model))
         }
         
         // Add Deepseek models if API key is set
@@ -235,11 +259,23 @@ class ChatViewModel @Inject constructor(
             null -> "unknown"
         }
         
+        // Get default system prompt based on model type
+        val isLocalModel = _uiState.value.selectedModel is ModelProvider.Local
+        val defaultPrompt = if (isLocalModel) {
+            systemPromptRepository.getDefaultLocalPrompt()
+        } else {
+            systemPromptRepository.getDefaultApiPrompt()
+        }
+        
+        val systemPromptContent = defaultPrompt?.content ?: _uiState.value.aiConfig.systemPrompt
+        val systemPromptId = defaultPrompt?.id
+        
         val id = conversationRepository.createConversation(
             title = title,
-            systemPrompt = _uiState.value.aiConfig.systemPrompt,
+            systemPrompt = systemPromptContent,
             model = modelName,
-            provider = provider
+            provider = provider,
+            systemPromptId = systemPromptId
         )
         
         selectConversation(id)
@@ -646,5 +682,165 @@ class ChatViewModel @Inject constructor(
     
     fun onScrolledToBottom() {
         _uiState.update { it.copy(shouldScrollToBottom = false) }
+    }
+    
+    // Search functionality
+    fun toggleSearchMode() {
+        val newSearchMode = !_uiState.value.isSearchMode
+        if (newSearchMode) {
+            _uiState.update { 
+                it.copy(
+                    isSearchMode = true,
+                    searchQuery = "",
+                    currentSearchIndex = 0,
+                    searchMatchCount = 0
+                ) 
+            }
+        } else {
+            _uiState.update { 
+                it.copy(
+                    isSearchMode = false,
+                    searchQuery = "",
+                    currentSearchIndex = 0,
+                    searchMatchCount = 0
+                ) 
+            }
+        }
+    }
+    
+    fun updateSearchQuery(query: String) {
+        val matches = if (query.isBlank()) {
+            emptyList()
+        } else {
+            _uiState.value.messages.filter { message ->
+                message.content.contains(query, ignoreCase = true)
+            }
+        }
+        
+        _uiState.update { 
+            it.copy(
+                searchQuery = query,
+                searchMatchCount = matches.size,
+                currentSearchIndex = if (matches.isNotEmpty()) 0 else -1
+            ) 
+        }
+    }
+    
+    fun navigateToNextSearchResult() {
+        val currentState = _uiState.value
+        if (currentState.searchMatchCount == 0) return
+        
+        val nextIndex = (currentState.currentSearchIndex + 1) % currentState.searchMatchCount
+        _uiState.update { it.copy(currentSearchIndex = nextIndex) }
+    }
+    
+    fun navigateToPreviousSearchResult() {
+        val currentState = _uiState.value
+        if (currentState.searchMatchCount == 0) return
+        
+        val prevIndex = if (currentState.currentSearchIndex == 0) {
+            currentState.searchMatchCount - 1
+        } else {
+            currentState.currentSearchIndex - 1
+        }
+        _uiState.update { it.copy(currentSearchIndex = prevIndex) }
+    }
+    
+    fun getCurrentSearchMessageIndex(): Int? {
+        val currentState = _uiState.value
+        if (currentState.searchQuery.isBlank() || currentState.searchMatchCount == 0) return null
+        
+        val matches = currentState.messages.filter { message ->
+            message.content.contains(currentState.searchQuery, ignoreCase = true)
+        }
+        
+        val currentMessage = matches.getOrNull(currentState.currentSearchIndex) ?: return null
+        return currentState.messages.indexOf(currentMessage)
+    }
+    
+    // System prompt functionality
+    fun showSystemPromptDialog() {
+        // Load current conversation's system prompt ID
+        val currentPromptId = _uiState.value.currentConversation?.systemPromptId
+        _uiState.update { 
+            it.copy(
+                showSystemPromptDialog = true,
+                selectedSystemPromptId = currentPromptId
+            ) 
+        }
+    }
+    
+    fun hideSystemPromptDialog() {
+        _uiState.update { it.copy(showSystemPromptDialog = false) }
+    }
+    
+    fun selectSystemPrompt(promptId: String) {
+        viewModelScope.launch {
+            val prompt = systemPromptRepository.getPromptById(promptId)
+            val conversationId = _uiState.value.currentConversationId
+            
+            if (prompt != null && conversationId != null) {
+                // Update conversation with selected prompt
+                conversationRepository.updateConversationSystemPrompt(
+                    id = conversationId,
+                    systemPromptId = promptId,
+                    systemPrompt = prompt.content
+                )
+                
+                // Increment usage count
+                systemPromptRepository.incrementUsageCount(promptId)
+                
+                _uiState.update { it.copy(selectedSystemPromptId = promptId) }
+            }
+            
+            hideSystemPromptDialog()
+        }
+    }
+    
+    // Export chat functionality
+    fun exportChat() {
+        val conversation = _uiState.value.currentConversation
+        val messages = _uiState.value.messages
+        
+        if (conversation == null || messages.isEmpty()) return
+        
+        val exportBuilder = StringBuilder()
+        exportBuilder.appendLine("Chat Export: ${conversation.title}")
+        exportBuilder.appendLine("Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
+        exportBuilder.appendLine("Model: ${conversation.model} (${conversation.provider})")
+        exportBuilder.appendLine("=" .repeat(50))
+        exportBuilder.appendLine()
+        
+        messages.forEach { message ->
+            val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                .format(java.util.Date(message.createdAt))
+            val role = when (message.role) {
+                MessageRole.USER -> "👤 User"
+                MessageRole.ASSISTANT -> "🤖 Assistant"
+                MessageRole.SYSTEM -> "⚙️ System"
+            }
+            
+            exportBuilder.appendLine("[$timestamp] $role:")
+            exportBuilder.appendLine(message.content)
+            exportBuilder.appendLine()
+            exportBuilder.appendLine("-".repeat(50))
+            exportBuilder.appendLine()
+        }
+        
+        _uiState.update { 
+            it.copy(
+                showExportDialog = true,
+                exportedChatText = exportBuilder.toString()
+            ) 
+        }
+    }
+    
+    fun hideExportDialog() {
+        _uiState.update { 
+            it.copy(
+                showExportDialog = false,
+                exportedChatText = null
+            ) 
+        }
     }
 }

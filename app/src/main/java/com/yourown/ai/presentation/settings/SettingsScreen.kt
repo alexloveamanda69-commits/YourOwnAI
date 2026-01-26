@@ -59,6 +59,9 @@ fun SettingsScreen(
             // AI Configuration Section
             AIConfigurationSection(
                 config = uiState.aiConfig,
+                apiPrompts = uiState.apiPrompts,
+                localPrompts = uiState.localPrompts,
+                viewModel = viewModel,
                 onEditSystemPrompt = viewModel::showSystemPromptDialog,
                 onEditLocalSystemPrompt = viewModel::showLocalSystemPromptDialog,
                 onTemperatureChange = viewModel::updateTemperature,
@@ -72,8 +75,10 @@ fun SettingsScreen(
             // Knowledge & Memory Section
             KnowledgeMemorySection(
                 hasContext = uiState.userContext.content.isNotEmpty(),
+                documentsCount = uiState.knowledgeDocuments.size,
                 onEditContext = viewModel::showContextDialog,
-                onAddDocument = { /* TODO */ },
+                onManageDocuments = viewModel::showDocumentsListDialog,
+                onAddDocument = viewModel::createNewDocument,
                 onViewMemories = onViewMemories
             )
             
@@ -90,21 +95,59 @@ fun SettingsScreen(
     }
     
     // Dialogs
-    if (uiState.showSystemPromptDialog) {
-        SystemPromptDialog(
-            currentPrompt = uiState.aiConfig.systemPrompt,
-            onDismiss = viewModel::hideSystemPromptDialog,
-            onSave = viewModel::updateSystemPrompt
+    if (uiState.showSystemPromptsListDialog && uiState.promptTypeFilter != null) {
+        val promptsList = when (uiState.promptTypeFilter) {
+            com.yourown.ai.data.repository.PromptType.API -> uiState.apiPrompts
+            com.yourown.ai.data.repository.PromptType.LOCAL -> uiState.localPrompts
+            else -> emptyList()
+        }
+        
+        com.yourown.ai.presentation.settings.components.SystemPromptsListDialog(
+            prompts = promptsList,
+            promptType = uiState.promptTypeFilter!!,
+            onDismiss = viewModel::hideSystemPromptsListDialog,
+            onAddNew = { viewModel.showEditPromptDialog(null) },
+            onEdit = { viewModel.showEditPromptDialog(it) },
+            onDelete = viewModel::deletePrompt,
+            onSetDefault = viewModel::setPromptAsDefault
         )
     }
     
-    if (uiState.showLocalSystemPromptDialog) {
-        SystemPromptDialog(
-            currentPrompt = uiState.aiConfig.localSystemPrompt,
-            onDismiss = viewModel::hideLocalSystemPromptDialog,
-            onSave = viewModel::updateLocalSystemPrompt,
-            title = "Local Model System Prompt",
-            subtitle = "Shorter prompt for local models (Qwen, Llama)"
+    if (uiState.showEditPromptDialog) {
+        com.yourown.ai.presentation.settings.components.EditPromptDialog(
+            prompt = uiState.selectedPromptForEdit,
+            promptType = uiState.promptTypeFilter ?: com.yourown.ai.data.repository.PromptType.API,
+            allPrompts = uiState.systemPrompts,
+            onDismiss = viewModel::hideEditPromptDialog,
+            onSave = { name, content, isDefault ->
+                viewModel.savePrompt(
+                    id = uiState.selectedPromptForEdit?.id,
+                    name = name,
+                    content = content,
+                    type = uiState.promptTypeFilter ?: com.yourown.ai.data.repository.PromptType.API,
+                    isDefault = isDefault
+                )
+            }
+        )
+    }
+    
+    if (uiState.showDocumentsListDialog) {
+        com.yourown.ai.presentation.settings.components.KnowledgeDocumentsListDialog(
+            documents = uiState.knowledgeDocuments,
+            onDismiss = viewModel::hideDocumentsListDialog,
+            onAddDocument = viewModel::createNewDocument,
+            onEditDocument = { viewModel.showEditDocumentDialog(it) },
+            onDeleteDocument = viewModel::deleteDocument
+        )
+    }
+    
+    if (uiState.showEditDocumentDialog) {
+        com.yourown.ai.presentation.settings.components.EditDocumentDialog(
+            document = uiState.selectedDocumentForEdit,
+            onDismiss = viewModel::hideEditDocumentDialog,
+            onSave = { id, name, content ->
+                viewModel.saveDocument(id, name, content)
+            }
         )
     }
     
@@ -239,6 +282,9 @@ private fun ApiKeyItem(
 @Composable
 private fun AIConfigurationSection(
     config: AIConfig,
+    apiPrompts: List<com.yourown.ai.domain.model.SystemPrompt>,
+    localPrompts: List<com.yourown.ai.domain.model.SystemPrompt>,
+    viewModel: SettingsViewModel,
     onEditSystemPrompt: () -> Unit,
     onEditLocalSystemPrompt: () -> Unit, // NEW
     onTemperatureChange: (Float) -> Unit,
@@ -253,28 +299,32 @@ private fun AIConfigurationSection(
         icon = Icons.Default.SmartToy,
         subtitle = "Customize your AI's behavior"
     ) {
-        // System Prompt (API models)
+        // System Prompts (API models)
         SettingItemClickable(
             title = "System Prompt (API)",
-            subtitle = "For cloud models (Deepseek, OpenAI, Grok)",
-            onClick = onEditSystemPrompt,
+            subtitle = "For cloud models (Deepseek, OpenAI, Grok) • Total: ${apiPrompts.size}",
+            onClick = { viewModel.showSystemPromptsListDialog(com.yourown.ai.data.repository.PromptType.API) },
             trailing = {
-                IconButton(onClick = { /* TODO: Show help */ }) {
-                    Icon(Icons.Default.HelpOutline, "Help", modifier = Modifier.size(20.dp))
+                Row {
+                    IconButton(onClick = { viewModel.createNewPrompt(com.yourown.ai.data.repository.PromptType.API) }) {
+                        Icon(Icons.Default.Add, "Add API prompt", modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         )
         
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
         
-        // Local System Prompt (Local models)
+        // System Prompts (Local models)
         SettingItemClickable(
             title = "System Prompt (Local)",
-            subtitle = "For local models (Qwen, Llama)",
-            onClick = onEditLocalSystemPrompt,
+            subtitle = "For local models (Qwen, Llama) • Total: ${localPrompts.size}",
+            onClick = { viewModel.showSystemPromptsListDialog(com.yourown.ai.data.repository.PromptType.LOCAL) },
             trailing = {
-                IconButton(onClick = { /* TODO: Show help */ }) {
-                    Icon(Icons.Default.HelpOutline, "Help", modifier = Modifier.size(20.dp))
+                Row {
+                    IconButton(onClick = { viewModel.createNewPrompt(com.yourown.ai.data.repository.PromptType.LOCAL) }) {
+                        Icon(Icons.Default.Add, "Add Local prompt", modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         )
@@ -323,10 +373,10 @@ private fun AIConfigurationSection(
         
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
         
-        // Message History Limit
+        // Message History Limit (API models only)
         DropdownSetting(
-            title = "Message History",
-            subtitle = "How long the conversation can be before it's considered memory",
+            title = "Message History (API only)",
+            subtitle = "How many messages to send to API models • Local models always use last message",
             value = config.messageHistoryLimit,
             options = (AIConfig.MIN_MESSAGE_HISTORY..AIConfig.MAX_MESSAGE_HISTORY).toList(),
             onValueChange = onMessageHistoryChange,
@@ -350,7 +400,9 @@ private fun AIConfigurationSection(
 @Composable
 private fun KnowledgeMemorySection(
     hasContext: Boolean,
+    documentsCount: Int,
     onEditContext: () -> Unit,
+    onManageDocuments: () -> Unit,
     onAddDocument: () -> Unit,
     onViewMemories: () -> Unit
 ) {
@@ -377,6 +429,22 @@ private fun KnowledgeMemorySection(
                     }
                     IconButton(onClick = { /* TODO: Show help */ }) {
                         Icon(Icons.Default.HelpOutline, "Help", modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+        )
+        
+        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+        
+        // Knowledge Documents
+        SettingItemClickable(
+            title = "Knowledge data",
+            subtitle = "Text documents for AI teaching",
+            onClick = onManageDocuments,
+            trailing = {
+                Row {
+                    IconButton(onClick = onManageDocuments) {
+                        Icon(Icons.Default.Description, "View Documents", modifier = Modifier.size(20.dp))
                     }
                 }
             }

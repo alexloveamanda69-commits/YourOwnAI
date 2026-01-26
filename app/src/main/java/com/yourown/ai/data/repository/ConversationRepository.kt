@@ -54,7 +54,8 @@ class ConversationRepository @Inject constructor(
         title: String,
         systemPrompt: String,
         model: String,
-        provider: String
+        provider: String,
+        systemPromptId: String? = null
     ): String {
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
@@ -63,6 +64,7 @@ class ConversationRepository @Inject constructor(
             id = id,
             title = title,
             systemPrompt = systemPrompt,
+            systemPromptId = systemPromptId,
             model = model,
             provider = provider,
             createdAt = now,
@@ -105,6 +107,22 @@ class ConversationRepository @Inject constructor(
                 it.copy(
                     model = model,
                     provider = provider,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+    
+    /**
+     * Update conversation system prompt
+     */
+    suspend fun updateConversationSystemPrompt(id: String, systemPromptId: String, systemPrompt: String) {
+        val conversation = conversationDao.getConversationById(id)
+        conversation?.let {
+            conversationDao.updateConversation(
+                it.copy(
+                    systemPromptId = systemPromptId,
+                    systemPrompt = systemPrompt,
                     updatedAt = System.currentTimeMillis()
                 )
             )

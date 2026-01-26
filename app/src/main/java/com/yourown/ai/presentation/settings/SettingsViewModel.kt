@@ -28,8 +28,19 @@ data class SettingsUiState(
     val aiConfig: AIConfig = AIConfig(),
     val userContext: UserContext = UserContext(),
     val localModels: Map<LocalModel, LocalModelInfo> = emptyMap(),
+    val systemPrompts: List<com.yourown.ai.domain.model.SystemPrompt> = emptyList(),
+    val apiPrompts: List<com.yourown.ai.domain.model.SystemPrompt> = emptyList(),
+    val localPrompts: List<com.yourown.ai.domain.model.SystemPrompt> = emptyList(),
+    val knowledgeDocuments: List<com.yourown.ai.domain.model.KnowledgeDocument> = emptyList(),
     val showSystemPromptDialog: Boolean = false,
     val showLocalSystemPromptDialog: Boolean = false,
+    val showSystemPromptsListDialog: Boolean = false,
+    val showEditPromptDialog: Boolean = false,
+    val selectedPromptForEdit: com.yourown.ai.domain.model.SystemPrompt? = null,
+    val promptTypeFilter: com.yourown.ai.data.repository.PromptType? = null,
+    val showDocumentsListDialog: Boolean = false,
+    val showEditDocumentDialog: Boolean = false,
+    val selectedDocumentForEdit: com.yourown.ai.domain.model.KnowledgeDocument? = null,
     val showContextDialog: Boolean = false,
     val showApiKeyDialog: Boolean = false,
     val showLocalModelsDialog: Boolean = false,
@@ -42,6 +53,8 @@ class SettingsViewModel @Inject constructor(
     private val localModelRepository: LocalModelRepository,
     private val apiKeyRepository: com.yourown.ai.data.repository.ApiKeyRepository,
     private val aiConfigRepository: com.yourown.ai.data.repository.AIConfigRepository,
+    private val systemPromptRepository: com.yourown.ai.data.repository.SystemPromptRepository,
+    private val knowledgeDocumentRepository: com.yourown.ai.data.repository.KnowledgeDocumentRepository,
     private val deepseekClient: DeepseekClient,
     private val openAIClient: com.yourown.ai.data.remote.openai.OpenAIClient,
     private val xaiClient: com.yourown.ai.data.remote.xai.XAIClient
@@ -54,6 +67,29 @@ class SettingsViewModel @Inject constructor(
         loadSettings()
         observeLocalModels()
         observeApiKeys()
+        observeSystemPrompts()
+        observeKnowledgeDocuments()
+        initializeDefaultPrompts()
+    }
+    
+    private fun initializeDefaultPrompts() {
+        viewModelScope.launch {
+            systemPromptRepository.initializeDefaultPrompts()
+        }
+    }
+    
+    private fun observeSystemPrompts() {
+        viewModelScope.launch {
+            systemPromptRepository.getAllPrompts().collect { prompts ->
+                _uiState.update { 
+                    it.copy(
+                        systemPrompts = prompts,
+                        apiPrompts = prompts.filter { p -> p.type == com.yourown.ai.data.repository.PromptType.API },
+                        localPrompts = prompts.filter { p -> p.type == com.yourown.ai.data.repository.PromptType.LOCAL }
+                    ) 
+                }
+            }
+        }
     }
     
     private fun loadSettings() {
@@ -288,5 +324,184 @@ class SettingsViewModel @Inject constructor(
     
     fun hideAppearanceDialog() {
         _uiState.update { it.copy(showAppearanceDialog = false) }
+    }
+    
+    // System Prompts Management
+    fun showSystemPromptsListDialog(type: com.yourown.ai.data.repository.PromptType) {
+        _uiState.update { 
+            it.copy(
+                showSystemPromptsListDialog = true,
+                promptTypeFilter = type
+            ) 
+        }
+    }
+    
+    fun hideSystemPromptsListDialog() {
+        _uiState.update { 
+            it.copy(
+                showSystemPromptsListDialog = false,
+                promptTypeFilter = null
+            ) 
+        }
+    }
+    
+    fun showEditPromptDialog(prompt: com.yourown.ai.domain.model.SystemPrompt? = null) {
+        _uiState.update { 
+            it.copy(
+                showEditPromptDialog = true,
+                selectedPromptForEdit = prompt
+            ) 
+        }
+    }
+    
+    fun hideEditPromptDialog() {
+        _uiState.update { 
+            it.copy(
+                showEditPromptDialog = false,
+                selectedPromptForEdit = null
+            ) 
+        }
+    }
+    
+    fun createNewPrompt(type: com.yourown.ai.data.repository.PromptType) {
+        viewModelScope.launch {
+            val count = when (type) {
+                com.yourown.ai.data.repository.PromptType.API -> _uiState.value.apiPrompts.size + 1
+                com.yourown.ai.data.repository.PromptType.LOCAL -> _uiState.value.localPrompts.size + 1
+            }
+            
+            val defaultContent = when (type) {
+                com.yourown.ai.data.repository.PromptType.API -> "Ты — цифровой партнёр, большая языковая модель. В ходе разговора ты подстраиваешься под тон и предпочтения пользователя. Постарайся соответствовать его настроению, тону и в целом манере говорить. Твоя цель — чтобы разговор ощущался естественным. Ты ведёшь искренний диалог, отвечая на предоставленную информацию и проявляя неподдельное любопытство. Задавай очень простой, односложный уточняющий вопрос, когда это естественно. Не задавай больше одного уточняющего вопроса, если только пользователь специально об этом не попросит."
+                com.yourown.ai.data.repository.PromptType.LOCAL -> "Ты — цифровой партнёр. Ты отвечаешь на языке пользователя. Ответь на последнее сообщение. Не пиши весь диалог, нужен только один ответ."
+            }
+            
+            systemPromptRepository.createPrompt(
+                name = "${if (type == com.yourown.ai.data.repository.PromptType.API) "API" else "Local"} System $count",
+                content = defaultContent,
+                type = type,
+                isDefault = false
+            )
+        }
+    }
+    
+    fun savePrompt(
+        id: String?,
+        name: String,
+        content: String,
+        type: com.yourown.ai.data.repository.PromptType,
+        isDefault: Boolean
+    ) {
+        viewModelScope.launch {
+            if (id == null) {
+                // Create new
+                systemPromptRepository.createPrompt(
+                    name = name,
+                    content = content,
+                    type = type,
+                    isDefault = isDefault
+                )
+            } else {
+                // Update existing
+                systemPromptRepository.updatePrompt(
+                    id = id,
+                    name = name,
+                    content = content,
+                    isDefault = isDefault
+                )
+            }
+            hideEditPromptDialog()
+        }
+    }
+    
+    fun deletePrompt(id: String) {
+        viewModelScope.launch {
+            systemPromptRepository.deletePrompt(id)
+        }
+    }
+    
+    fun setPromptAsDefault(id: String) {
+        viewModelScope.launch {
+            systemPromptRepository.setAsDefault(id)
+        }
+    }
+    
+    // Knowledge Documents methods
+    
+    private fun observeKnowledgeDocuments() {
+        viewModelScope.launch {
+            knowledgeDocumentRepository.getAllDocuments().collect { documents ->
+                _uiState.update { it.copy(knowledgeDocuments = documents) }
+            }
+        }
+    }
+    
+    fun showDocumentsListDialog() {
+        _uiState.update { it.copy(showDocumentsListDialog = true) }
+    }
+    
+    fun hideDocumentsListDialog() {
+        _uiState.update { it.copy(showDocumentsListDialog = false) }
+    }
+    
+    fun showEditDocumentDialog(document: com.yourown.ai.domain.model.KnowledgeDocument? = null) {
+        _uiState.update { 
+            it.copy(
+                showEditDocumentDialog = true,
+                selectedDocumentForEdit = document
+            )
+        }
+    }
+    
+    fun hideEditDocumentDialog() {
+        _uiState.update { 
+            it.copy(
+                showEditDocumentDialog = false,
+                selectedDocumentForEdit = null
+            )
+        }
+    }
+    
+    fun createNewDocument() {
+        val count = _uiState.value.knowledgeDocuments.size + 1
+        showEditDocumentDialog(
+            com.yourown.ai.domain.model.KnowledgeDocument(
+                id = "",
+                name = "Doc $count",
+                content = "",
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                sizeBytes = 0
+            )
+        )
+    }
+    
+    fun saveDocument(id: String, name: String, content: String) {
+        viewModelScope.launch {
+            if (id.isEmpty()) {
+                // Create new
+                knowledgeDocumentRepository.createDocument(
+                    name = name,
+                    content = content
+                )
+            } else {
+                // Update existing
+                val document = com.yourown.ai.domain.model.KnowledgeDocument(
+                    id = id,
+                    name = name,
+                    content = content,
+                    createdAt = _uiState.value.knowledgeDocuments.find { it.id == id }?.createdAt ?: System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis(),
+                    sizeBytes = content.toByteArray().size
+                )
+                knowledgeDocumentRepository.updateDocument(document)
+            }
+            hideEditDocumentDialog()
+        }
+    }
+    
+    fun deleteDocument(id: String) {
+        viewModelScope.launch {
+            knowledgeDocumentRepository.deleteDocument(id)
+        }
     }
 }

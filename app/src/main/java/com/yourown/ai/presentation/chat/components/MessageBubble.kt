@@ -14,9 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -39,7 +39,8 @@ fun MessageBubble(
     onViewLogs: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    searchQuery: String = ""
 ) {
     val isUser = message.role == MessageRole.USER
     val isDark = isSystemInDarkTheme()
@@ -91,7 +92,12 @@ fun MessageBubble(
                     
                     // Markdown-aware text with clickable links
                     val context = LocalContext.current
-                    val annotatedText = parseMarkdown(message.content, isUser)
+                    var annotatedText = parseMarkdown(message.content, isUser)
+                    
+                    // Apply search highlighting if search is active
+                    if (searchQuery.isNotBlank() && message.content.contains(searchQuery, ignoreCase = true)) {
+                        annotatedText = highlightSearchQuery(annotatedText, searchQuery)
+                    }
                     
                     ClickableText(
                         text = annotatedText,
@@ -414,4 +420,37 @@ private fun parseMarkdown(text: String, isUser: Boolean): AnnotatedString {
             }
         }
     }
+}
+
+/**
+ * Highlights search query in annotated text
+ */
+private fun highlightSearchQuery(
+    annotatedText: AnnotatedString,
+    searchQuery: String
+): AnnotatedString {
+    if (searchQuery.isBlank()) return annotatedText
+    
+    val text = annotatedText.text
+    val builder = AnnotatedString.Builder(annotatedText)
+    
+    var startIndex = 0
+    while (startIndex < text.length) {
+        val index = text.indexOf(searchQuery, startIndex, ignoreCase = true)
+        if (index == -1) break
+        
+        // Add yellow background highlight
+        builder.addStyle(
+            style = SpanStyle(
+                background = Color(0xFFFFEB3B), // Yellow highlight
+                color = Color(0xFF000000) // Black text for contrast
+            ),
+            start = index,
+            end = index + searchQuery.length
+        )
+        
+        startIndex = index + searchQuery.length
+    }
+    
+    return builder.toAnnotatedString()
 }

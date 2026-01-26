@@ -55,6 +55,7 @@ data class Conversation(
     val id: String,
     val title: String,
     val systemPrompt: String,
+    val systemPromptId: String? = null,
     val model: String,
     val provider: String,
     val createdAt: Long,

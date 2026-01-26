@@ -69,7 +69,7 @@ enum class OpenAIModel(
     
     // GPT-4o Series
     GPT_4O(
-        modelId = "gpt-4o",
+        modelId = "gpt-4o-2024-05-13",
         displayName = "GPT-4o",
         description = "Fast, intelligent, flexible"
     );

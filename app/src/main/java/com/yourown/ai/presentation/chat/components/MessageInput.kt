@@ -2,7 +2,6 @@ package com.yourown.ai.presentation.chat.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
@@ -64,15 +63,7 @@ fun MessageInput(
                 ),
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Send
-                ),
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        if (text.trim().isNotEmpty() && enabled) {
-                            onSend()
-                            keyboardController?.hide()
-                        }
-                    }
+                    imeAction = ImeAction.Default
                 ),
                 textStyle = MaterialTheme.typography.bodyLarge
             )

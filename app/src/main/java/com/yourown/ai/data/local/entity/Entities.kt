@@ -12,7 +12,8 @@ import androidx.room.PrimaryKey
     tableName = "conversations",
     indices = [
         Index(value = ["createdAt"]),
-        Index(value = ["updatedAt"])
+        Index(value = ["updatedAt"]),
+        Index(value = ["systemPromptId"])
     ]
 )
 data class ConversationEntity(
@@ -20,7 +21,8 @@ data class ConversationEntity(
     val id: String,
     
     val title: String,                    // Название беседы
-    val systemPrompt: String,             // Системный промпт для этой беседы
+    val systemPrompt: String,             // Системный промпт для этой беседы (legacy)
+    val systemPromptId: String? = null,   // ID системного промпта из таблицы system_prompts
     val model: String,                    // Используемая модель (gpt-4, claude-3, etc)
     val provider: String,                 // Провайдер (openai, anthropic, etc)
     
@@ -213,4 +215,28 @@ data class SystemPromptEntity(
     val updatedAt: Long,                  // Последнее обновление
     
     val usageCount: Int = 0,              // Сколько раз использован
+)
+
+/**
+ * Knowledge Document Entity
+ * Текстовые документы для контекста (из настроек)
+ */
+@Entity(
+    tableName = "knowledge_documents",
+    indices = [
+        Index(value = ["createdAt"]),
+        Index(value = ["name"])
+    ]
+)
+data class KnowledgeDocumentEntity(
+    @PrimaryKey
+    val id: String,
+    
+    val name: String,                     // Название документа
+    val content: String,                  // Текст документа
+    
+    val createdAt: Long,                  // Timestamp создания
+    val updatedAt: Long,                  // Последнее обновление
+    
+    val sizeBytes: Int = 0,               // Размер в байтах
 )

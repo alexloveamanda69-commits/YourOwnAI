@@ -9,7 +9,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.yourown.ai.domain.model.DownloadStatus
 import com.yourown.ai.domain.model.LocalModel
+import com.yourown.ai.domain.model.LocalModelInfo
 import com.yourown.ai.domain.model.ModelProvider
 
 /**
@@ -20,6 +22,7 @@ import com.yourown.ai.domain.model.ModelProvider
 fun ModelSelector(
     selectedModel: ModelProvider?,
     availableModels: List<ModelProvider>,
+    localModels: Map<LocalModel, LocalModelInfo>,
     onModelSelect: (ModelProvider) -> Unit,
     onDownloadModel: (LocalModel) -> Unit,
     modifier: Modifier = Modifier
@@ -79,24 +82,29 @@ fun ModelSelector(
                 )
             } else {
                 // Group models by type
-                val localModels = availableModels.filterIsInstance<ModelProvider.Local>()
+                val localModelProviders = availableModels.filterIsInstance<ModelProvider.Local>()
                 val apiModels = availableModels.filterIsInstance<ModelProvider.API>()
                 
                 // Local models section
-                if (localModels.isNotEmpty()) {
+                if (localModelProviders.isNotEmpty()) {
                     Text(
                         text = "LOCAL MODELS",
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    localModels.forEach { provider ->
+                    localModelProviders.forEach { provider ->
+                        val modelInfo = localModels[provider.model]
                         ModelMenuItem(
                             provider = provider,
                             isSelected = selectedModel == provider,
+                            modelInfo = modelInfo,
                             onSelect = {
                                 onModelSelect(provider)
                                 expanded = false
+                            },
+                            onDownload = {
+                                onDownloadModel(provider.model)
                             }
                         )
                     }
@@ -104,7 +112,7 @@ fun ModelSelector(
                 
                 // API models section
                 if (apiModels.isNotEmpty()) {
-                    if (localModels.isNotEmpty()) {
+                    if (localModelProviders.isNotEmpty()) {
                         Divider(modifier = Modifier.padding(vertical = 4.dp))
                     }
                     Text(
@@ -117,10 +125,12 @@ fun ModelSelector(
                         ModelMenuItem(
                             provider = provider,
                             isSelected = selectedModel == provider,
+                            modelInfo = null,
                             onSelect = {
                                 onModelSelect(provider)
                                 expanded = false
-                            }
+                            },
+                            onDownload = {}
                         )
                     }
                 }
@@ -133,7 +143,9 @@ fun ModelSelector(
 private fun ModelMenuItem(
     provider: ModelProvider,
     isSelected: Boolean,
-    onSelect: () -> Unit
+    modelInfo: LocalModelInfo?,
+    onSelect: () -> Unit,
+    onDownload: () -> Unit
 ) {
     DropdownMenuItem(
         text = {
@@ -168,7 +180,43 @@ private fun ModelMenuItem(
                         }
                     }
                 }
-                if (isSelected) {
+                
+                // Show download button for local models that are not downloaded
+                if (provider is ModelProvider.Local && modelInfo != null) {
+                    when (modelInfo.status) {
+                        is DownloadStatus.Downloaded -> {
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        is DownloadStatus.Downloading -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                        else -> {
+                            IconButton(
+                                onClick = {
+                                    onDownload()
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Download,
+                                    contentDescription = "Download",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                } else if (isSelected) {
                     Icon(
                         Icons.Default.Check,
                         contentDescription = "Selected",
@@ -178,6 +226,15 @@ private fun ModelMenuItem(
                 }
             }
         },
-        onClick = onSelect
+        onClick = {
+            // Only allow selection if model is downloaded (for local models)
+            if (provider is ModelProvider.Local && modelInfo != null) {
+                if (modelInfo.status is DownloadStatus.Downloaded) {
+                    onSelect()
+                }
+            } else {
+                onSelect()
+            }
+        }
     )
 }

@@ -17,6 +17,7 @@ import com.yourown.ai.data.local.entity.*
  * - ApiKeys (метаданные API ключей)
  * - UsageStats (статистика использования)
  * - SystemPrompts (системные промпты)
+ * - KnowledgeDocuments (текстовые документы для контекста)
  */
 @Database(
     entities = [
@@ -28,8 +29,9 @@ import com.yourown.ai.data.local.entity.*
         ApiKeyEntity::class,
         UsageStatsEntity::class,
         SystemPromptEntity::class,
+        KnowledgeDocumentEntity::class,
     ],
-    version = 3,  // Increased: added promptType to SystemPromptEntity
+    version = 5,  // Increased: added KnowledgeDocumentEntity
     exportSchema = true
 )
 abstract class YourOwnAIDatabase : RoomDatabase() {
@@ -41,6 +43,7 @@ abstract class YourOwnAIDatabase : RoomDatabase() {
     abstract fun apiKeyDao(): ApiKeyDao
     abstract fun usageStatsDao(): UsageStatsDao
     abstract fun systemPromptDao(): SystemPromptDao
+    abstract fun knowledgeDocumentDao(): KnowledgeDocumentDao
     
     companion object {
         const val DATABASE_NAME = "yourown_ai_database"
