@@ -557,21 +557,6 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 - ✅ Patent protection
 - ✅ Compatible with Google Play and F-Droid
 
-## 🙏 Acknowledgments
-
-- [llama.cpp](https://github.com/ggerganov/llama.cpp) - Foundational local LLM inference
-- [Llamatik](https://github.com/diegoberaldin/Llamatik) - Kotlin wrapper for llama.cpp on Android
-- [Jetpack Compose](https://developer.android.com/jetpack/compose) - Modern declarative UI
-- [Deepseek](https://www.deepseek.com/) - Affordable, high-quality AI models
-- [Hugging Face](https://huggingface.co/) - GGUF model hosting
-- The open source community for making this possible
-
-## 📞 Support
-
-- **Issues:** [GitHub Issues](https://github.com/yourusername/YourOwnAI/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/YourOwnAI/discussions)
-- **Email:** yourown.ai.dev@gmail.com (if needed)
-
 ## ⚠️ Disclaimer
 
 This application allows unrestricted AI interactions. Users are responsible for:
