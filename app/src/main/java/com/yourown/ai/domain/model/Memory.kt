@@ -34,20 +34,14 @@ data class MemoryEntry(
     val id: String,
     val conversationId: String,
     val messageId: String,
-    val category: AIPrompts.Memory.MemoryCategory,
     val fact: String,
     val createdAt: Long = System.currentTimeMillis(),
     val isArchived: Boolean = false
 ) {
-    /**
-     * Format for display
-     */
-    fun toDisplayString(): String = "${category.displayName}: $fact"
-    
     companion object {
         /**
          * Parse memory from AI response
-         * Format: "Категория:Факт" or "Нет ключевой информации"
+         * Format: "Факт" or "Нет ключевой информации"
          */
         fun parseFromResponse(
             response: String,
@@ -57,28 +51,16 @@ data class MemoryEntry(
             val trimmed = response.trim()
             
             // Check for "no key info" response
-            if (trimmed.equals("Нет ключевой информации", ignoreCase = true)) {
+            if (trimmed.equals("Нет ключевой информации", ignoreCase = true) ||
+                trimmed.isEmpty()) {
                 return null
             }
-            
-            // Parse "Category:Fact" format
-            val parts = trimmed.split(":", limit = 2)
-            if (parts.size != 2) {
-                return null
-            }
-            
-            val categoryName = parts[0].trim()
-            val fact = parts[1].trim()
-            
-            val category = AIPrompts.Memory.MemoryCategory.fromRussian(categoryName)
-                ?: return null
             
             return MemoryEntry(
                 id = generateId(),
                 conversationId = conversationId,
                 messageId = messageId,
-                category = category,
-                fact = fact
+                fact = trimmed
             )
         }
         
@@ -89,21 +71,8 @@ data class MemoryEntry(
 }
 
 /**
- * Memory statistics by category
+ * Memory statistics
  */
 data class MemoryStats(
-    val totalMemories: Int,
-    val byCategory: Map<String, Int>
-) {
-    companion object {
-        /**
-         * Create from DAO result
-         */
-        fun fromCategoryCounts(counts: List<com.yourown.ai.data.local.dao.CategoryCount>): MemoryStats {
-            return MemoryStats(
-                totalMemories = counts.sumOf { it.count },
-                byCategory = counts.associate { it.category to it.count }
-            )
-        }
-    }
-}
+    val totalMemories: Int
+)

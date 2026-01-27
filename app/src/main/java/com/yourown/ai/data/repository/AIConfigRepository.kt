@@ -33,11 +33,25 @@ class AIConfigRepository @Inject constructor(
     companion object {
         private val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
         private val LOCAL_SYSTEM_PROMPT = stringPreferencesKey("local_system_prompt")
+        private val MEMORY_EXTRACTION_PROMPT = stringPreferencesKey("memory_extraction_prompt")
         private val TEMPERATURE = floatPreferencesKey("temperature")
         private val TOP_P = floatPreferencesKey("top_p")
         private val MAX_TOKENS = intPreferencesKey("max_tokens")
         private val DEEP_EMPATHY = booleanPreferencesKey("deep_empathy")
+        private val DEEP_EMPATHY_PROMPT = stringPreferencesKey("deep_empathy_prompt")
+        private val DEEP_EMPATHY_ANALYSIS_PROMPT = stringPreferencesKey("deep_empathy_analysis_prompt")
         private val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
+        private val RAG_ENABLED = booleanPreferencesKey("rag_enabled")
+        private val RAG_CHUNK_SIZE = intPreferencesKey("rag_chunk_size")
+        private val RAG_CHUNK_OVERLAP = intPreferencesKey("rag_chunk_overlap")
+        private val MEMORY_LIMIT = intPreferencesKey("memory_limit")
+        private val MEMORY_MIN_AGE_DAYS = intPreferencesKey("memory_min_age_days")
+        private val MEMORY_TITLE = stringPreferencesKey("memory_title")
+        private val MEMORY_INSTRUCTIONS = stringPreferencesKey("memory_instructions")
+        private val RAG_CHUNK_LIMIT = intPreferencesKey("rag_chunk_limit")
+        private val RAG_TITLE = stringPreferencesKey("rag_title")
+        private val RAG_INSTRUCTIONS = stringPreferencesKey("rag_instructions")
+        private val CONTEXT_INSTRUCTIONS = stringPreferencesKey("context_instructions")
         private val MESSAGE_HISTORY_LIMIT = intPreferencesKey("message_history_limit")
         
         private val USER_CONTEXT = stringPreferencesKey("user_context")
@@ -51,11 +65,25 @@ class AIConfigRepository @Inject constructor(
         AIConfig(
             systemPrompt = preferences[SYSTEM_PROMPT] ?: AIConfig.DEFAULT_SYSTEM_PROMPT,
             localSystemPrompt = preferences[LOCAL_SYSTEM_PROMPT] ?: AIConfig.DEFAULT_LOCAL_SYSTEM_PROMPT,
+            memoryExtractionPrompt = preferences[MEMORY_EXTRACTION_PROMPT] ?: AIConfig.DEFAULT_MEMORY_EXTRACTION_PROMPT,
             temperature = preferences[TEMPERATURE] ?: 0.7f,
             topP = preferences[TOP_P] ?: 0.9f,
             maxTokens = preferences[MAX_TOKENS] ?: 4096,
             deepEmpathy = preferences[DEEP_EMPATHY] ?: false,
+            deepEmpathyPrompt = preferences[DEEP_EMPATHY_PROMPT] ?: AIConfig.DEFAULT_DEEP_EMPATHY_PROMPT,
+            deepEmpathyAnalysisPrompt = preferences[DEEP_EMPATHY_ANALYSIS_PROMPT] ?: AIConfig.DEFAULT_DEEP_EMPATHY_ANALYSIS_PROMPT,
             memoryEnabled = preferences[MEMORY_ENABLED] ?: true,
+            memoryLimit = preferences[MEMORY_LIMIT] ?: 5,
+            memoryMinAgeDays = preferences[MEMORY_MIN_AGE_DAYS] ?: 2,
+            memoryTitle = preferences[MEMORY_TITLE] ?: "Твои воспоминания",
+            memoryInstructions = preferences[MEMORY_INSTRUCTIONS] ?: AIConfig.DEFAULT_MEMORY_INSTRUCTIONS,
+            ragEnabled = preferences[RAG_ENABLED] ?: false,
+            ragChunkSize = preferences[RAG_CHUNK_SIZE] ?: 512,
+            ragChunkOverlap = preferences[RAG_CHUNK_OVERLAP] ?: 64,
+            ragChunkLimit = preferences[RAG_CHUNK_LIMIT] ?: 5,
+            ragTitle = preferences[RAG_TITLE] ?: "Твоя библиотека текстов",
+            ragInstructions = preferences[RAG_INSTRUCTIONS] ?: AIConfig.DEFAULT_RAG_INSTRUCTIONS,
+            contextInstructions = preferences[CONTEXT_INSTRUCTIONS] ?: AIConfig.DEFAULT_CONTEXT_INSTRUCTIONS,
             messageHistoryLimit = preferences[MESSAGE_HISTORY_LIMIT] ?: 10
         )
     }
@@ -85,6 +113,60 @@ class AIConfigRepository @Inject constructor(
     suspend fun updateLocalSystemPrompt(prompt: String) {
         dataStore.edit { preferences ->
             preferences[LOCAL_SYSTEM_PROMPT] = prompt
+        }
+    }
+    
+    /**
+     * Update memory extraction prompt
+     */
+    suspend fun updateMemoryExtractionPrompt(prompt: String) {
+        dataStore.edit { preferences ->
+            preferences[MEMORY_EXTRACTION_PROMPT] = prompt
+        }
+    }
+    
+    /**
+     * Reset memory extraction prompt to default
+     */
+    suspend fun resetMemoryExtractionPrompt() {
+        dataStore.edit { preferences ->
+            preferences.remove(MEMORY_EXTRACTION_PROMPT)
+        }
+    }
+    
+    /**
+     * Update deep empathy prompt
+     */
+    suspend fun updateDeepEmpathyPrompt(prompt: String) {
+        dataStore.edit { preferences ->
+            preferences[DEEP_EMPATHY_PROMPT] = prompt
+        }
+    }
+    
+    /**
+     * Reset deep empathy prompt to default
+     */
+    suspend fun resetDeepEmpathyPrompt() {
+        dataStore.edit { preferences ->
+            preferences.remove(DEEP_EMPATHY_PROMPT)
+        }
+    }
+    
+    /**
+     * Update deep empathy analysis prompt
+     */
+    suspend fun updateDeepEmpathyAnalysisPrompt(prompt: String) {
+        dataStore.edit { preferences ->
+            preferences[DEEP_EMPATHY_ANALYSIS_PROMPT] = prompt
+        }
+    }
+    
+    /**
+     * Reset deep empathy analysis prompt to default
+     */
+    suspend fun resetDeepEmpathyAnalysisPrompt() {
+        dataStore.edit { preferences ->
+            preferences.remove(DEEP_EMPATHY_ANALYSIS_PROMPT)
         }
     }
     
@@ -134,6 +216,147 @@ class AIConfigRepository @Inject constructor(
     }
     
     /**
+     * Toggle RAG (Retrieval Augmented Generation)
+     */
+    suspend fun setRAGEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[RAG_ENABLED] = enabled
+        }
+    }
+    
+    /**
+     * Update RAG chunk size
+     */
+    suspend fun updateRAGChunkSize(value: Int) {
+        dataStore.edit { preferences ->
+            preferences[RAG_CHUNK_SIZE] = value.coerceIn(
+                AIConfig.MIN_CHUNK_SIZE,
+                AIConfig.MAX_CHUNK_SIZE
+            )
+        }
+    }
+    
+    /**
+     * Update RAG chunk overlap
+     */
+    suspend fun updateRAGChunkOverlap(value: Int) {
+        dataStore.edit { preferences ->
+            preferences[RAG_CHUNK_OVERLAP] = value.coerceIn(
+                AIConfig.MIN_CHUNK_OVERLAP,
+                AIConfig.MAX_CHUNK_OVERLAP
+            )
+        }
+    }
+    
+    /**
+     * Update memory limit (number of memories to include)
+     */
+    suspend fun updateMemoryLimit(value: Int) {
+        dataStore.edit { preferences ->
+            preferences[MEMORY_LIMIT] = value.coerceIn(
+                AIConfig.MIN_MEMORY_LIMIT,
+                AIConfig.MAX_MEMORY_LIMIT
+            )
+        }
+    }
+    
+    /**
+     * Update memory minimum age in days
+     */
+    suspend fun updateMemoryMinAgeDays(value: Int) {
+        dataStore.edit { preferences ->
+            preferences[MEMORY_MIN_AGE_DAYS] = value.coerceIn(
+                AIConfig.MIN_MEMORY_MIN_AGE_DAYS,
+                AIConfig.MAX_MEMORY_MIN_AGE_DAYS
+            )
+        }
+    }
+    
+    /**
+     * Update RAG chunk limit (number of chunks to include)
+     */
+    suspend fun updateRAGChunkLimit(value: Int) {
+        dataStore.edit { preferences ->
+            preferences[RAG_CHUNK_LIMIT] = value.coerceIn(
+                AIConfig.MIN_RAG_CHUNK_LIMIT,
+                AIConfig.MAX_RAG_CHUNK_LIMIT
+            )
+        }
+    }
+    
+    /**
+     * Update memory title
+     */
+    suspend fun updateMemoryTitle(title: String) {
+        dataStore.edit { preferences ->
+            preferences[MEMORY_TITLE] = title
+        }
+    }
+    
+    /**
+     * Update memory instructions
+     */
+    suspend fun updateMemoryInstructions(instructions: String) {
+        dataStore.edit { preferences ->
+            preferences[MEMORY_INSTRUCTIONS] = instructions
+        }
+    }
+    
+    /**
+     * Reset memory instructions to default
+     */
+    suspend fun resetMemoryInstructions() {
+        dataStore.edit { preferences ->
+            preferences.remove(MEMORY_INSTRUCTIONS)
+        }
+    }
+    
+    /**
+     * Update RAG title
+     */
+    suspend fun updateRAGTitle(title: String) {
+        dataStore.edit { preferences ->
+            preferences[RAG_TITLE] = title
+        }
+    }
+    
+    /**
+     * Update RAG instructions
+     */
+    suspend fun updateRAGInstructions(instructions: String) {
+        dataStore.edit { preferences ->
+            preferences[RAG_INSTRUCTIONS] = instructions
+        }
+    }
+    
+    /**
+     * Reset RAG instructions to default
+     */
+    suspend fun resetRAGInstructions() {
+        dataStore.edit { preferences ->
+            preferences.remove(RAG_INSTRUCTIONS)
+        }
+    }
+    
+    /**
+     * Update context instructions
+     */
+    suspend fun updateContextInstructions(instructions: String) {
+        dataStore.edit { preferences ->
+            preferences[CONTEXT_INSTRUCTIONS] = instructions
+        }
+    }
+    
+    /**
+     * Reset context instructions to default
+     */
+    suspend fun resetContextInstructions() {
+        dataStore.edit { preferences ->
+            preferences.remove(CONTEXT_INSTRUCTIONS)
+        }
+    }
+    
+    /**
      * Update message history limit
      */
     suspend fun updateMessageHistoryLimit(value: Int) {
@@ -174,11 +397,25 @@ class AIConfigRepository @Inject constructor(
         return AIConfig(
             systemPrompt = preferences[SYSTEM_PROMPT] ?: AIConfig.DEFAULT_SYSTEM_PROMPT,
             localSystemPrompt = preferences[LOCAL_SYSTEM_PROMPT] ?: AIConfig.DEFAULT_LOCAL_SYSTEM_PROMPT,
+            memoryExtractionPrompt = preferences[MEMORY_EXTRACTION_PROMPT] ?: AIConfig.DEFAULT_MEMORY_EXTRACTION_PROMPT,
             temperature = preferences[TEMPERATURE] ?: 0.7f,
             topP = preferences[TOP_P] ?: 0.9f,
             maxTokens = preferences[MAX_TOKENS] ?: 4096,
             deepEmpathy = preferences[DEEP_EMPATHY] ?: false,
+            deepEmpathyPrompt = preferences[DEEP_EMPATHY_PROMPT] ?: AIConfig.DEFAULT_DEEP_EMPATHY_PROMPT,
+            deepEmpathyAnalysisPrompt = preferences[DEEP_EMPATHY_ANALYSIS_PROMPT] ?: AIConfig.DEFAULT_DEEP_EMPATHY_ANALYSIS_PROMPT,
             memoryEnabled = preferences[MEMORY_ENABLED] ?: true,
+            memoryLimit = preferences[MEMORY_LIMIT] ?: 5,
+            memoryMinAgeDays = preferences[MEMORY_MIN_AGE_DAYS] ?: 2,
+            memoryTitle = preferences[MEMORY_TITLE] ?: "Твои воспоминания",
+            memoryInstructions = preferences[MEMORY_INSTRUCTIONS] ?: AIConfig.DEFAULT_MEMORY_INSTRUCTIONS,
+            ragEnabled = preferences[RAG_ENABLED] ?: false,
+            ragChunkSize = preferences[RAG_CHUNK_SIZE] ?: 512,
+            ragChunkOverlap = preferences[RAG_CHUNK_OVERLAP] ?: 64,
+            ragChunkLimit = preferences[RAG_CHUNK_LIMIT] ?: 5,
+            ragTitle = preferences[RAG_TITLE] ?: "Твоя библиотека текстов",
+            ragInstructions = preferences[RAG_INSTRUCTIONS] ?: AIConfig.DEFAULT_RAG_INSTRUCTIONS,
+            contextInstructions = preferences[CONTEXT_INSTRUCTIONS] ?: AIConfig.DEFAULT_CONTEXT_INSTRUCTIONS,
             messageHistoryLimit = preferences[MESSAGE_HISTORY_LIMIT] ?: 10
         )
     }

@@ -61,6 +61,52 @@ object DatabaseModule {
         }
     }
     
+    /**
+     * Migration from version 5 to 6
+     * Remove category column from memories table (new memory extraction doesn't use categories)
+     */
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // SQLite doesn't support DROP COLUMN, so we need to:
+            // 1. Create new table without category
+            // 2. Copy data
+            // 3. Drop old table
+            // 4. Rename new table
+            
+            // Create new memories table without category
+            database.execSQL("""
+                CREATE TABLE IF NOT EXISTS memories_new (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    conversation_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL,
+                    fact TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    is_archived INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+                    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE
+                )
+            """.trimIndent())
+            
+            // Copy data from old table (excluding category column)
+            database.execSQL("""
+                INSERT INTO memories_new (id, conversation_id, message_id, fact, created_at, is_archived)
+                SELECT id, conversation_id, message_id, fact, created_at, is_archived
+                FROM memories
+            """.trimIndent())
+            
+            // Drop old table
+            database.execSQL("DROP TABLE memories")
+            
+            // Rename new table to memories
+            database.execSQL("ALTER TABLE memories_new RENAME TO memories")
+            
+            // Recreate indices (without category index)
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_memories_conversation_id ON memories(conversation_id)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_memories_message_id ON memories(message_id)")
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_memories_created_at ON memories(created_at)")
+        }
+    }
+    
     @Provides
     @Singleton
     fun provideDatabase(
@@ -71,7 +117,7 @@ object DatabaseModule {
             YourOwnAIDatabase::class.java,
             YourOwnAIDatabase.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_2_3)
+            .addMigrations(MIGRATION_2_3, MIGRATION_5_6)
             .fallbackToDestructiveMigration() // Keep for future migrations
             .build()
     }

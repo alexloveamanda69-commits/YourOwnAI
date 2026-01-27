@@ -10,14 +10,6 @@ import com.yourown.ai.data.local.entity.MemoryEntity
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Data class for category count result
- */
-data class CategoryCount(
-    val category: String,
-    val count: Int
-)
-
-/**
  * DAO for memory operations
  */
 @Dao
@@ -36,12 +28,6 @@ interface MemoryDao {
     fun getAllMemories(): Flow<List<MemoryEntity>>
     
     /**
-     * Get memories by category
-     */
-    @Query("SELECT * FROM memories WHERE category = :category AND is_archived = 0 ORDER BY created_at DESC")
-    fun getMemoriesByCategory(category: String): Flow<List<MemoryEntity>>
-    
-    /**
      * Get memory by ID
      */
     @Query("SELECT * FROM memories WHERE id = :id")
@@ -58,12 +44,6 @@ interface MemoryDao {
      */
     @Query("SELECT * FROM memories WHERE fact LIKE '%' || :query || '%' AND is_archived = 0 ORDER BY created_at DESC")
     fun searchMemories(query: String): Flow<List<MemoryEntity>>
-    
-    /**
-     * Get memory count by category
-     */
-    @Query("SELECT category, COUNT(*) as count FROM memories WHERE is_archived = 0 GROUP BY category")
-    suspend fun getMemoryCountByCategory(): List<CategoryCount>
     
     /**
      * Get total memory count

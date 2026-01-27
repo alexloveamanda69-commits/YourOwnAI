@@ -258,6 +258,8 @@ private fun formatTimestamp(timestamp: Long): String {
  * - [text](url)
  * - **[bold link](url)**
  * - > blockquote
+ * - # Heading 1, ## Heading 2, ### Heading 3
+ * - --- horizontal divider
  */
 @Composable
 private fun parseMarkdown(text: String, isUser: Boolean): AnnotatedString {
@@ -289,10 +291,49 @@ private fun parseMarkdown(text: String, isUser: Boolean): AnnotatedString {
         val lines = text.split("\n")
 
         lines.forEachIndexed { lineIndex, line ->
+            val trimmedLine = line.trimStart()
+            
+            // Check for horizontal divider (---, ***, ___)
+            if (trimmedLine.matches(Regex("^(---|\\*\\*\\*|___)\\s*$"))) {
+                withStyle(SpanStyle(color = quoteBorderColor)) {
+                    append("─".repeat(20))
+                }
+                if (lineIndex < lines.size - 1) {
+                    append("\n")
+                }
+                return@forEachIndexed
+            }
+            
+            // Check for headings (# H1, ## H2, ### H3)
+            val headingMatch = Regex("^(#{1,3})\\s+(.+)$").find(trimmedLine)
+            if (headingMatch != null) {
+                val level = headingMatch.groupValues[1].length
+                val headingText = headingMatch.groupValues[2]
+                
+                val headingSize = when (level) {
+                    1 -> 1.5f // H1
+                    2 -> 1.3f // H2
+                    else -> 1.15f // H3
+                }
+                
+                withStyle(SpanStyle(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * headingSize,
+                    color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                )) {
+                    append(headingText)
+                }
+                
+                if (lineIndex < lines.size - 1) {
+                    append("\n")
+                }
+                return@forEachIndexed
+            }
+            
             // Check for blockquote (> text)
-            val isQuote = line.trimStart().startsWith(">")
+            val isQuote = trimmedLine.startsWith(">")
             val processLine = if (isQuote) {
-                line.trimStart().removePrefix(">").trimStart()
+                trimmedLine.removePrefix(">").trimStart()
             } else {
                 line
             }

@@ -181,9 +181,9 @@ private fun ModelMenuItem(
                     }
                 }
                 
-                // Show download button for local models that are not downloaded
+                // Show download button/status for local models
                 if (provider is ModelProvider.Local && modelInfo != null) {
-                    when (modelInfo.status) {
+                    when (val status = modelInfo.status) {
                         is DownloadStatus.Downloaded -> {
                             if (isSelected) {
                                 Icon(
@@ -194,11 +194,51 @@ private fun ModelMenuItem(
                                 )
                             }
                         }
+                        is DownloadStatus.Queued -> {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.width(60.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Queued",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         is DownloadStatus.Downloading -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.width(60.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(18.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        progress = status.progress / 100f,
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                LinearProgressIndicator(
+                                    progress = status.progress / 100f,
+                                    modifier = Modifier
+                                        .width(50.dp)
+                                        .height(3.dp)
+                                )
+                                Text(
+                                    text = "${status.progress}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                         else -> {
                             IconButton(

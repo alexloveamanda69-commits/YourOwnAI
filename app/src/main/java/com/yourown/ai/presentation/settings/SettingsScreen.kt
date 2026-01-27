@@ -23,7 +23,6 @@ import com.yourown.ai.presentation.settings.dialogs.AppearanceDialog
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit = {},
-    onViewMemories: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -59,6 +58,7 @@ fun SettingsScreen(
             // AI Configuration Section
             AIConfigurationSection(
                 config = uiState.aiConfig,
+                uiState = uiState,
                 apiPrompts = uiState.apiPrompts,
                 localPrompts = uiState.localPrompts,
                 viewModel = viewModel,
@@ -68,18 +68,32 @@ fun SettingsScreen(
                 onTopPChange = viewModel::updateTopP,
                 onToggleDeepEmpathy = viewModel::toggleDeepEmpathy,
                 onToggleMemory = viewModel::toggleMemory,
+                onEditMemoryPrompt = viewModel::showMemoryPromptDialog,
+                onMemoryLimitChange = viewModel::updateMemoryLimit,
+                onToggleRAG = viewModel::toggleRAG,
+                onChunkSizeChange = { viewModel.updateRAGChunkSize(it.toInt()) },
+                onChunkOverlapChange = { viewModel.updateRAGChunkOverlap(it.toInt()) },
+                onRAGChunkLimitChange = viewModel::updateRAGChunkLimit,
                 onMessageHistoryChange = viewModel::updateMessageHistoryLimit,
                 onMaxTokensChange = viewModel::updateMaxTokens
+            )
+            
+            // Embedding Models Section
+            EmbeddingModelsSection(
+                onShowEmbeddingModels = viewModel::showEmbeddingModelsDialog
             )
             
             // Knowledge & Memory Section
             KnowledgeMemorySection(
                 hasContext = uiState.userContext.content.isNotEmpty(),
                 documentsCount = uiState.knowledgeDocuments.size,
+                documentProcessingStatus = uiState.documentProcessingStatus,
+                uiState = uiState,
+                viewModel = viewModel,
                 onEditContext = viewModel::showContextDialog,
                 onManageDocuments = viewModel::showDocumentsListDialog,
                 onAddDocument = viewModel::createNewDocument,
-                onViewMemories = onViewMemories
+                onViewMemories = viewModel::showMemoriesDialog
             )
             
             // Appearance Section
@@ -134,6 +148,7 @@ fun SettingsScreen(
     if (uiState.showDocumentsListDialog) {
         com.yourown.ai.presentation.settings.components.KnowledgeDocumentsListDialog(
             documents = uiState.knowledgeDocuments,
+            processingStatus = uiState.documentProcessingStatus,
             onDismiss = viewModel::hideDocumentsListDialog,
             onAddDocument = viewModel::createNewDocument,
             onEditDocument = { viewModel.showEditDocumentDialog(it) },
@@ -176,9 +191,125 @@ fun SettingsScreen(
         )
     }
     
+    if (uiState.showEmbeddingModelsDialog) {
+        EmbeddingModelsDialog(
+            models = uiState.embeddingModels,
+            onDismiss = viewModel::hideEmbeddingModelsDialog,
+            onDownload = viewModel::downloadEmbeddingModel,
+            onDelete = viewModel::deleteEmbeddingModel
+        )
+    }
+    
     if (uiState.showAppearanceDialog) {
         AppearanceDialog(
             onDismiss = viewModel::hideAppearanceDialog
+        )
+    }
+    
+    if (uiState.showMemoriesDialog) {
+        com.yourown.ai.presentation.settings.components.MemoriesDialog(
+            memories = uiState.memories,
+            onDismiss = viewModel::hideMemoriesDialog,
+            onEditMemory = viewModel::showEditMemoryDialog,
+            onDeleteMemory = viewModel::deleteMemory
+        )
+    }
+    
+    if (uiState.showEditMemoryDialog && uiState.selectedMemoryForEdit != null) {
+        com.yourown.ai.presentation.settings.components.EditMemoryDialog(
+            memory = uiState.selectedMemoryForEdit!!,
+            onDismiss = viewModel::hideEditMemoryDialog,
+            onSave = viewModel::saveMemory
+        )
+    }
+    
+    if (uiState.showMemoryPromptDialog) {
+        com.yourown.ai.presentation.settings.components.MemoryExtractionPromptDialog(
+            currentPrompt = uiState.aiConfig.memoryExtractionPrompt,
+            onDismiss = viewModel::hideMemoryPromptDialog,
+            onSave = viewModel::updateMemoryExtractionPrompt,
+            onReset = viewModel::resetMemoryExtractionPrompt
+        )
+    }
+    
+    if (uiState.showDeepEmpathyPromptDialog) {
+        com.yourown.ai.presentation.settings.components.DeepEmpathyPromptDialog(
+            currentPrompt = uiState.aiConfig.deepEmpathyPrompt,
+            onDismiss = viewModel::hideDeepEmpathyPromptDialog,
+            onSave = viewModel::updateDeepEmpathyPrompt,
+            onReset = viewModel::resetDeepEmpathyPrompt
+        )
+    }
+    
+    if (uiState.showDeepEmpathyAnalysisDialog) {
+        com.yourown.ai.presentation.settings.components.DeepEmpathyAnalysisDialog(
+            currentPrompt = uiState.aiConfig.deepEmpathyAnalysisPrompt,
+            onDismiss = viewModel::hideDeepEmpathyAnalysisDialog,
+            onSave = viewModel::updateDeepEmpathyAnalysisPrompt,
+            onReset = viewModel::resetDeepEmpathyAnalysisPrompt
+        )
+    }
+    
+    if (uiState.showContextInstructionsDialog) {
+        com.yourown.ai.presentation.settings.components.ContextInstructionsDialog(
+            currentInstructions = uiState.aiConfig.contextInstructions,
+            onDismiss = viewModel::hideContextInstructionsDialog,
+            onSave = viewModel::updateContextInstructions,
+            onReset = viewModel::resetContextInstructions
+        )
+    }
+    
+    if (uiState.showMemoryInstructionsDialog) {
+        com.yourown.ai.presentation.settings.components.MemoryInstructionsDialog(
+            currentInstructions = uiState.aiConfig.memoryInstructions,
+            onDismiss = viewModel::hideMemoryInstructionsDialog,
+            onSave = viewModel::updateMemoryInstructions,
+            onReset = viewModel::resetMemoryInstructions
+        )
+    }
+    
+    if (uiState.showRAGInstructionsDialog) {
+        com.yourown.ai.presentation.settings.components.RAGInstructionsDialog(
+            currentInstructions = uiState.aiConfig.ragInstructions,
+            onDismiss = viewModel::hideRAGInstructionsDialog,
+            onSave = viewModel::updateRAGInstructions,
+            onReset = viewModel::resetRAGInstructions
+        )
+    }
+    
+    if (uiState.showEmbeddingRequiredDialog) {
+        AlertDialog(
+            onDismissRequest = viewModel::hideEmbeddingRequiredDialog,
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = { Text("Embedding Model Required") },
+            text = {
+                Text(
+                    "To enable Memory or RAG features, you need a downloaded embedding model.\n\n" +
+                    "Available models:\n" +
+                    "• all-MiniLM-L6-v2 (21 MB, fast)\n" +
+                    "• mxbai-embed-large (670 MB, better quality)\n\n" +
+                    "Please download an embedding model to continue."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.hideEmbeddingRequiredDialog()
+                    viewModel.showEmbeddingModelsDialog()
+                }) {
+                    Text("Download Embedding Model")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::hideEmbeddingRequiredDialog) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }
@@ -282,15 +413,22 @@ private fun ApiKeyItem(
 @Composable
 private fun AIConfigurationSection(
     config: AIConfig,
+    uiState: SettingsUiState,
     apiPrompts: List<com.yourown.ai.domain.model.SystemPrompt>,
     localPrompts: List<com.yourown.ai.domain.model.SystemPrompt>,
     viewModel: SettingsViewModel,
     onEditSystemPrompt: () -> Unit,
-    onEditLocalSystemPrompt: () -> Unit, // NEW
+    onEditLocalSystemPrompt: () -> Unit,
     onTemperatureChange: (Float) -> Unit,
     onTopPChange: (Float) -> Unit,
     onToggleDeepEmpathy: () -> Unit,
     onToggleMemory: () -> Unit,
+    onEditMemoryPrompt: () -> Unit,
+    onMemoryLimitChange: (Int) -> Unit,
+    onToggleRAG: () -> Unit,
+    onChunkSizeChange: (Float) -> Unit,
+    onChunkOverlapChange: (Float) -> Unit,
+    onRAGChunkLimitChange: (Int) -> Unit,
     onMessageHistoryChange: (Int) -> Unit,
     onMaxTokensChange: (Int) -> Unit
 ) {
@@ -361,6 +499,36 @@ private fun AIConfigurationSection(
             onCheckedChange = { onToggleDeepEmpathy() }
         )
         
+        // Deep Empathy Prompt (shown when Deep Empathy is enabled)
+        if (config.deepEmpathy) {
+            SettingItemClickable(
+                title = "Deep Empathy Prompt",
+                subtitle = "Customize focus tracking prompt • Required: {dialogue_focus}",
+                onClick = { viewModel.showDeepEmpathyPromptDialog() },
+                trailing = {
+                    Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                }
+            )
+            
+            // Advanced Deep Empathy Settings
+            SettingItemClickable(
+                title = if (uiState.showAdvancedDeepEmpathySettings) "▼ Advanced Deep Empathy Settings" else "▶ Advanced Deep Empathy Settings",
+                subtitle = "Customize dialogue focus analysis",
+                onClick = { viewModel.toggleAdvancedDeepEmpathySettings() }
+            )
+            
+            if (uiState.showAdvancedDeepEmpathySettings) {
+                SettingItemClickable(
+                    title = "Analysis Prompt",
+                    subtitle = "How AI finds focus points • Required: {text}",
+                    onClick = { viewModel.showDeepEmpathyAnalysisDialog() },
+                    trailing = {
+                        Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                    }
+                )
+            }
+        }
+        
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
         
         // Memory
@@ -370,6 +538,140 @@ private fun AIConfigurationSection(
             checked = config.memoryEnabled,
             onCheckedChange = { onToggleMemory() }
         )
+        
+        // Memory Extraction Prompt
+        if (config.memoryEnabled) {
+            SettingItemClickable(
+                title = "Memory Extraction Prompt",
+                subtitle = "Customize how AI extracts memories • Required: {text}",
+                onClick = onEditMemoryPrompt,
+                trailing = {
+                    Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                }
+            )
+            
+            // Memory Limit Slider
+            SliderSetting(
+                title = "Memory Limit",
+                subtitle = "AI memory for memories limit",
+                value = config.memoryLimit.toFloat(),
+                valueRange = com.yourown.ai.domain.model.AIConfig.MIN_MEMORY_LIMIT.toFloat()..com.yourown.ai.domain.model.AIConfig.MAX_MEMORY_LIMIT.toFloat(),
+                onValueChange = { onMemoryLimitChange(it.toInt()) },
+                valueFormatter = { "${it.toInt()} memories" }
+            )
+            
+            // Advanced Memory Settings
+            SettingItemClickable(
+                title = if (uiState.showAdvancedMemorySettings) "▼ Advanced Memory Settings" else "▶ Advanced Memory Settings",
+                subtitle = "Customize memory behavior",
+                onClick = { viewModel.toggleAdvancedMemorySettings() }
+            )
+            
+            if (uiState.showAdvancedMemorySettings) {
+                OutlinedTextField(
+                    value = config.memoryTitle,
+                    onValueChange = { viewModel.updateMemoryTitle(it) },
+                    label = { Text("Memory Title") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                SliderSetting(
+                    title = "Memory Age Filter",
+                    subtitle = "Only retrieve memories older than X days",
+                    value = config.memoryMinAgeDays.toFloat(),
+                    valueRange = com.yourown.ai.domain.model.AIConfig.MIN_MEMORY_MIN_AGE_DAYS.toFloat()..com.yourown.ai.domain.model.AIConfig.MAX_MEMORY_MIN_AGE_DAYS.toFloat(),
+                    onValueChange = { viewModel.updateMemoryMinAgeDays(it.toInt()) },
+                    valueFormatter = { "${it.toInt()} days" }
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                SettingItemClickable(
+                    title = "Memory Instructions",
+                    subtitle = "How AI should use memories",
+                    onClick = { viewModel.showMemoryInstructionsDialog() },
+                    trailing = {
+                        Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                    }
+                )
+            }
+        }
+        
+        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+        
+        // RAG (Retrieval Augmented Generation)
+        ToggleSetting(
+            title = "RAG",
+            subtitle = "Use knowledge documents in responses",
+            checked = config.ragEnabled,
+            onCheckedChange = { onToggleRAG() }
+        )
+        
+        // RAG Settings (show only when RAG is enabled)
+        if (config.ragEnabled) {
+            // RAG Chunk Limit Slider
+            SliderSetting(
+                title = "RAG Chunk Limit",
+                subtitle = "AI knowledge memory limit",
+                value = config.ragChunkLimit.toFloat(),
+                valueRange = com.yourown.ai.domain.model.AIConfig.MIN_RAG_CHUNK_LIMIT.toFloat()..com.yourown.ai.domain.model.AIConfig.MAX_RAG_CHUNK_LIMIT.toFloat(),
+                onValueChange = { onRAGChunkLimitChange(it.toInt()) },
+                valueFormatter = { "${it.toInt()} chunks" }
+            )
+            
+            // Advanced RAG Settings
+            SettingItemClickable(
+                title = if (uiState.showAdvancedRAGSettings) "▼ Advanced RAG Settings" else "▶ Advanced RAG Settings",
+                subtitle = "Customize RAG behavior",
+                onClick = { viewModel.toggleAdvancedRAGSettings() }
+            )
+            
+            if (uiState.showAdvancedRAGSettings) {
+                OutlinedTextField(
+                    value = config.ragTitle,
+                    onValueChange = { viewModel.updateRAGTitle(it) },
+                    label = { Text("RAG Title") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Chunk Size
+                SliderSetting(
+                    title = "Chunk Size",
+                    subtitle = "Text size for each document chunk",
+                    value = config.ragChunkSize.toFloat(),
+                    valueRange = AIConfig.MIN_CHUNK_SIZE.toFloat()..AIConfig.MAX_CHUNK_SIZE.toFloat(),
+                    onValueChange = onChunkSizeChange,
+                    valueFormatter = { "${it.toInt()} characters" }
+                )
+                
+                // Chunk Overlap
+                SliderSetting(
+                    title = "Chunk Overlap",
+                    subtitle = "Overlapping characters between chunks",
+                    value = config.ragChunkOverlap.toFloat(),
+                    valueRange = AIConfig.MIN_CHUNK_OVERLAP.toFloat()..AIConfig.MAX_CHUNK_OVERLAP.toFloat(),
+                    onValueChange = onChunkOverlapChange,
+                    valueFormatter = { "${it.toInt()} characters" }
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                SettingItemClickable(
+                    title = "RAG Instructions",
+                    subtitle = "How AI should use knowledge documents",
+                    onClick = { viewModel.showRAGInstructionsDialog() },
+                    trailing = {
+                        Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                    }
+                )
+            }
+        }
         
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
         
@@ -401,6 +703,9 @@ private fun AIConfigurationSection(
 private fun KnowledgeMemorySection(
     hasContext: Boolean,
     documentsCount: Int,
+    documentProcessingStatus: com.yourown.ai.data.repository.DocumentProcessingStatus,
+    uiState: SettingsUiState,
+    viewModel: SettingsViewModel,
     onEditContext: () -> Unit,
     onManageDocuments: () -> Unit,
     onAddDocument: () -> Unit,
@@ -433,6 +738,24 @@ private fun KnowledgeMemorySection(
                 }
             }
         )
+        
+        // Advanced Context Settings
+        SettingItemClickable(
+            title = if (uiState.showAdvancedContextSettings) "▼ Advanced Context Settings" else "▶ Advanced Context Settings",
+            subtitle = "Customize enhanced context instructions",
+            onClick = { viewModel.toggleAdvancedContextSettings() }
+        )
+        
+        if (uiState.showAdvancedContextSettings) {
+            SettingItemClickable(
+                title = "Context Instructions",
+                subtitle = "How AI uses enhanced context",
+                onClick = { viewModel.showContextInstructionsDialog() },
+                trailing = {
+                    Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                }
+            )
+        }
         
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
         
@@ -469,6 +792,155 @@ private fun KnowledgeMemorySection(
             }
         )
         
+        // Document processing indicator
+        when (val status = documentProcessingStatus) {
+            is com.yourown.ai.data.repository.DocumentProcessingStatus.Processing -> {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Processing: ${status.documentName}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = status.currentStep,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LinearProgressIndicator(
+                                progress = { status.progress / 100f },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${status.progress}%",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            is com.yourown.ai.data.repository.DocumentProcessingStatus.Deleting -> {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Deleting: ${status.documentName}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+            is com.yourown.ai.data.repository.DocumentProcessingStatus.Completed -> {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "✓ Processing completed!",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+            is com.yourown.ai.data.repository.DocumentProcessingStatus.Failed -> {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Error,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Processing failed",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = status.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+            else -> { /* No processing indicator needed */ }
+        }
+        
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
         
         // Saved Memories
@@ -480,6 +952,26 @@ private fun KnowledgeMemorySection(
                 Icon(Icons.Default.ChevronRight, "View")
             }
         )
+    }
+}
+
+@Composable
+private fun EmbeddingModelsSection(
+    onShowEmbeddingModels: () -> Unit
+) {
+    SettingsSection(
+        title = "Embedding Models",
+        icon = Icons.Default.Memory,
+        subtitle = "Models for semantic search and RAG"
+    ) {
+        FilledTonalButton(
+            onClick = onShowEmbeddingModels,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Download, null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Download Embedding Model")
+        }
     }
 }
 
@@ -692,7 +1184,8 @@ private fun SliderSetting(
     subtitle: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit
+    onValueChange: (Float) -> Unit,
+    valueFormatter: (Float) -> String = { "%.2f".format(it) }
 ) {
     Column {
         Row(
@@ -717,7 +1210,7 @@ private fun SliderSetting(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "%.2f".format(value),
+                    text = valueFormatter(value),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold
                 )

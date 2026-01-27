@@ -99,7 +99,11 @@ fun ChatTopBar(
                     
                     // Close search button
                     IconButton(onClick = onSearchClose) {
-                        Icon(Icons.Default.Close, "Close search")
+                        Icon(
+                            Icons.Default.Close, 
+                            "Close search",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
             } else {
@@ -151,7 +155,7 @@ fun ChatTopBar(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Поиск по чату") },
+                            text = { Text("Search") },
                             onClick = {
                                 showMenu = false
                                 onSearchClick()
@@ -162,7 +166,7 @@ fun ChatTopBar(
                         )
                         
                         DropdownMenuItem(
-                            text = { Text("Системный промпт") },
+                            text = { Text("Persona") },
                             onClick = {
                                 showMenu = false
                                 onSystemPromptClick()
@@ -173,7 +177,7 @@ fun ChatTopBar(
                         )
                         
                         DropdownMenuItem(
-                            text = { Text("Скачать чат") },
+                            text = { Text("Save chat") },
                             onClick = {
                                 showMenu = false
                                 onExportChatClick()

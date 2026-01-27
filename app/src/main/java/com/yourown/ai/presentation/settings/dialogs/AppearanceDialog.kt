@@ -61,7 +61,11 @@ fun AppearanceDialog(
                             )
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, "Close")
+                            Icon(
+                                Icons.Default.Close, 
+                                "Close",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
                 }

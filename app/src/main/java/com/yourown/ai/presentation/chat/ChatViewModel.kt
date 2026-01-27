@@ -36,6 +36,7 @@ data class ChatUiState(
     val availableModels: List<ModelProvider> = emptyList(),
     val selectedModel: ModelProvider? = null,
     val aiConfig: AIConfig = AIConfig(),
+    val userContext: com.yourown.ai.domain.model.UserContext = com.yourown.ai.domain.model.UserContext(),
     val systemPrompts: List<com.yourown.ai.domain.model.SystemPrompt> = emptyList(),
     val selectedSystemPromptId: String? = null,
     val isLoading: Boolean = false,
@@ -63,6 +64,8 @@ class ChatViewModel @Inject constructor(
     private val apiKeyRepository: ApiKeyRepository,
     private val aiConfigRepository: com.yourown.ai.data.repository.AIConfigRepository,
     private val systemPromptRepository: com.yourown.ai.data.repository.SystemPromptRepository,
+    private val memoryRepository: com.yourown.ai.data.repository.MemoryRepository,
+    private val documentEmbeddingRepository: com.yourown.ai.data.repository.DocumentEmbeddingRepository,
     private val settingsManager: SettingsManager,
     private val llamaService: LlamaService,
     private val aiService: AIService
@@ -239,6 +242,12 @@ class ChatViewModel @Inject constructor(
                 _uiState.update { it.copy(aiConfig = config) }
             }
         }
+        viewModelScope.launch {
+            // Observe user context from repository
+            aiConfigRepository.userContext.collect { context ->
+                _uiState.update { it.copy(userContext = context) }
+            }
+        }
     }
     
     // Conversation Management
@@ -395,6 +404,18 @@ class ChatViewModel @Inject constructor(
                 conversationRepository.updateConversationModel(conversationId, modelName, providerName)
             }
             
+            // Auto-set default system prompt based on model type
+            when (model) {
+                is ModelProvider.Local -> {
+                    // Set local default system prompt for offline models
+                    aiConfigRepository.updateSystemPrompt(AIConfig.DEFAULT_LOCAL_SYSTEM_PROMPT)
+                }
+                is ModelProvider.API -> {
+                    // Set API default system prompt for cloud models
+                    aiConfigRepository.updateSystemPrompt(AIConfig.DEFAULT_SYSTEM_PROMPT)
+                }
+            }
+            
             // Also save as default for new chats
             when (model) {
                 is ModelProvider.Local -> {
@@ -468,13 +489,103 @@ class ChatViewModel @Inject constructor(
                 // Get conversation history
                 val allMessages = _uiState.value.messages + userMessage
                 
+                // Get user context from state
+                val userContextContent = _uiState.value.userContext.content
+                
+                // Deep Empathy, Memory and RAG work ONLY with API models
+                // Local models use only localSystemPrompt and last message
+                val isApiModel = selectedModel is ModelProvider.API
+                
+                // Analyze Deep Empathy focus points if enabled (ONLY for API models)
+                val deepEmpathyFocusPrompt = if (config.deepEmpathy && isApiModel) {
+                    try {
+                        // Replace {text} placeholder with actual message
+                        val analysisPrompt = config.deepEmpathyAnalysisPrompt.replace("{text}", text)
+                        
+                        // Call AI to analyze focus points
+                        val provider = _uiState.value.selectedModel
+                        if (provider == null) {
+                            Log.w("ChatViewModel", "No model selected for Deep Empathy analysis")
+                            null
+                        } else if (provider is ModelProvider.API) {
+                            // Deep Empathy analysis only for API models
+                            val analysisResponseBuilder = StringBuilder()
+                            aiService.generateResponse(
+                                provider = provider,
+                                messages = listOf(
+                                    Message(
+                                        id = UUID.randomUUID().toString(),
+                                        conversationId = conversationId,
+                                        role = MessageRole.USER,
+                                        content = analysisPrompt,
+                                        createdAt = System.currentTimeMillis()
+                                    )
+                                ),
+                                systemPrompt = "You are a focus point analyzer. Return only valid JSON.",
+                                userContext = null,
+                                config = config.copy(temperature = 0.3f) // Lower temperature for structured output
+                            ).collect { chunk ->
+                                analysisResponseBuilder.append(chunk)
+                            }
+                            
+                            val analysisResponse = analysisResponseBuilder.toString()
+                        
+                            // Parse JSON response
+                            val focusPoints = parseDeepEmpathyFocus(analysisResponse)
+                        
+                            // If focus points found, format them and insert into deepEmpathyPrompt
+                            if (focusPoints.isNotEmpty()) {
+                                val focusText = focusPoints.joinToString(", ")
+                                config.deepEmpathyPrompt.replace("{dialogue_focus}", focusText)
+                            } else {
+                                null
+                            }
+                        } else {
+                            // Local models don't support Deep Empathy
+                            null
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ChatViewModel", "Deep Empathy analysis failed", e)
+                        null
+                    }
+                } else {
+                    null
+                }
+                
+                // Get relevant memories if Memory is enabled (ONLY for API models)
+                val relevantMemories = if (config.memoryEnabled && isApiModel) {
+                    memoryRepository.findSimilarMemories(
+                        query = text, 
+                        limit = config.memoryLimit,
+                        minAgeDays = config.memoryMinAgeDays
+                    )
+                } else {
+                    emptyList()
+                }
+                
+                // Get relevant RAG chunks if RAG is enabled (ONLY for API models)
+                val relevantChunks = if (config.ragEnabled && isApiModel) {
+                    documentEmbeddingRepository.searchSimilarChunks(text, topK = config.ragChunkLimit)
+                        .map { it.first } // Extract DocumentChunkEntity from Pair
+                } else {
+                    emptyList()
+                }
+                
+                // Build enhanced context with Deep Empathy focus, memories and RAG
+                val enhancedContext = buildEnhancedContext(
+                    baseContext = userContextContent,
+                    memories = relevantMemories,
+                    ragChunks = relevantChunks,
+                    deepEmpathyFocus = deepEmpathyFocusPrompt
+                )
+                
                 // Build request logs with full context
                 val requestLogs = buildRequestLogs(
                     model = selectedModel,
                     config = config,
                     messageCount = allMessages.size,
                     allMessages = allMessages,
-                    userContext = null // TODO: Load from settings
+                    userContext = enhancedContext.ifBlank { null }
                 )
                 
                 // Get model name for logging
@@ -517,7 +628,7 @@ class ChatViewModel @Inject constructor(
                     provider = selectedModel,
                     messages = allMessages,
                     systemPrompt = systemPrompt,
-                    userContext = null, // TODO: Load from settings
+                    userContext = enhancedContext.ifBlank { null },
                     config = config
                 ).collect { chunk ->
                     responseBuilder.append(chunk)
@@ -541,6 +652,16 @@ class ChatViewModel @Inject constructor(
                     content = responseBuilder.toString().trim()
                 )
                 messageRepository.updateMessage(finalMessage)
+                
+                // Extract and save memory if enabled
+                if (config.memoryEnabled) {
+                    extractAndSaveMemory(
+                        userMessage = userMessage,
+                        selectedModel = selectedModel,
+                        config = config,
+                        conversationId = conversationId
+                    )
+                }
                 
                 // Trigger scroll to bottom after streaming completes
                 _uiState.update { it.copy(shouldScrollToBottom = true) }
@@ -570,6 +691,87 @@ class ChatViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    /**
+     * Build enhanced context with base context, memories, and RAG chunks
+     *
+     * Format:
+     * [Base Context]
+     *
+     * Твои воспоминания:
+     * - Memory 1
+     * - Memory 2
+     *
+     * Твоя база знаний:
+     * - Chunk 1
+     * - Chunk 2
+     */
+    private fun buildEnhancedContext(
+        baseContext: String,
+        memories: List<com.yourown.ai.domain.model.MemoryEntry>,
+        ragChunks: List<com.yourown.ai.data.local.entity.DocumentChunkEntity>,
+        deepEmpathyFocus: String? = null
+    ): String {
+        val config = _uiState.value.aiConfig
+        val parts = mutableListOf<String>()
+
+        // Deep Empathy Focus (if present, add at the very beginning)
+        if (!deepEmpathyFocus.isNullOrBlank()) {
+            parts.add(deepEmpathyFocus.trim())
+        }
+
+        // Add context instructions ONLY if Memory OR RAG are enabled and have content
+        // Don't show instructions if both are disabled
+        if ((memories.isNotEmpty() || ragChunks.isNotEmpty()) 
+            && config.contextInstructions.isNotBlank()) {
+            parts.add(config.contextInstructions.trim())
+        }
+
+        // Base context (персона, настройки и т.п.)
+        if (baseContext.isNotBlank()) {
+            parts.add(baseContext.trim())
+        }
+
+        // Memories
+        if (memories.isNotEmpty()) {
+            val memoriesText = buildString {
+                // Add title only if not blank
+                if (config.memoryTitle.isNotBlank()) {
+                    appendLine("${config.memoryTitle}:")
+                }
+                // Add instructions only if not blank
+                if (config.memoryInstructions.isNotBlank()) {
+                    appendLine(config.memoryInstructions)
+                    appendLine()
+                }
+                memories.forEachIndexed { index, memory ->
+                    appendLine("${index + 1}. ${memory.fact}")
+                }
+            }.trim()
+            parts.add(memoriesText)
+        }
+
+        // RAG chunks
+        if (ragChunks.isNotEmpty()) {
+            val ragText = buildString {
+                // Add title only if not blank
+                if (config.ragTitle.isNotBlank()) {
+                    appendLine("${config.ragTitle}:")
+                }
+                // Add instructions only if not blank
+                if (config.ragInstructions.isNotBlank()) {
+                    appendLine(config.ragInstructions)
+                    appendLine()
+                }
+                ragChunks.forEachIndexed { index, chunk ->
+                    appendLine("${index + 1}. ${chunk.content}")
+                }
+            }.trim()
+            parts.add(ragText)
+        }
+
+        return parts.joinToString("\n\n")
     }
     
     private fun buildRequestLogs(
@@ -841,6 +1043,133 @@ class ChatViewModel @Inject constructor(
                 showExportDialog = false,
                 exportedChatText = null
             ) 
+        }
+    }
+    
+    /**
+     * Extract memory from user message and save it
+     */
+    private fun extractAndSaveMemory(
+        userMessage: Message,
+        selectedModel: ModelProvider,
+        config: AIConfig,
+        conversationId: String
+    ) {
+        viewModelScope.launch {
+            try {
+                Log.d("ChatViewModel", "Starting memory extraction for message: ${userMessage.id}")
+                
+                // Get memory extraction prompt from config (user can customize it)
+                val memoryPrompt = config.memoryExtractionPrompt
+                
+                // Replace {text} placeholder with user message content
+                val filledPrompt = memoryPrompt.replace("{text}", userMessage.content)
+                
+                // Create a temporary message list with just the prompt
+                val promptMessage = Message(
+                    id = UUID.randomUUID().toString(),
+                    conversationId = conversationId,
+                    role = MessageRole.USER,
+                    content = filledPrompt,
+                    createdAt = System.currentTimeMillis()
+                )
+                
+                // Use simple system prompt for memory extraction
+                val systemPrompt = "Ты - анализатор памяти. Извлекай ключевую информацию из сообщений пользователя."
+                
+                // Call AI to extract memory
+                val responseBuilder = StringBuilder()
+                aiService.generateResponse(
+                    provider = selectedModel,
+                    messages = listOf(promptMessage),
+                    systemPrompt = systemPrompt,
+                    userContext = null,
+                    config = config.copy(messageHistoryLimit = 1) // Don't need history for memory extraction
+                ).collect { chunk ->
+                    responseBuilder.append(chunk)
+                }
+                
+                val memoryResponse = responseBuilder.toString().trim()
+                Log.d("ChatViewModel", "Memory extraction response: $memoryResponse")
+                
+                // Parse and save memory
+                val memoryEntry = com.yourown.ai.domain.model.MemoryEntry.parseFromResponse(
+                    response = memoryResponse,
+                    conversationId = conversationId,
+                    messageId = userMessage.id
+                )
+                
+                if (memoryEntry != null) {
+                    memoryRepository.insertMemory(memoryEntry)
+                    Log.i("ChatViewModel", "Memory saved: ${memoryEntry.fact}")
+                } else {
+                    Log.d("ChatViewModel", "No key information extracted")
+                }
+                
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error extracting memory", e)
+            }
+        }
+    }
+    
+    /**
+     * Parse Deep Empathy focus points from JSON response
+     * Returns only focus points where is_strong_focus = true
+     * Expected format: {"focus_points": ["...", "..."], "is_strong_focus": [true, false]}
+     */
+    private fun parseDeepEmpathyFocus(jsonResponse: String): List<String> {
+        return try {
+            // Extract JSON from response (handle cases where model adds text before/after)
+            val jsonStart = jsonResponse.indexOf("{")
+            val jsonEnd = jsonResponse.lastIndexOf("}") + 1
+            
+            if (jsonStart == -1 || jsonEnd <= jsonStart) {
+                Log.w("ChatViewModel", "No JSON found in Deep Empathy response")
+                return emptyList()
+            }
+            
+            val jsonString = jsonResponse.substring(jsonStart, jsonEnd)
+            
+            // Parse focus_points array
+            val focusPointsMatch = Regex(""""focus_points"\s*:\s*\[(.*?)]""").find(jsonString)
+            
+            if (focusPointsMatch == null) {
+                Log.w("ChatViewModel", "No focus_points found in JSON")
+                return emptyList()
+            }
+            
+            val focusPointsStr = focusPointsMatch.groupValues[1]
+            val points = Regex(""""([^"]+)"""").findAll(focusPointsStr)
+                .map { it.groupValues[1] }
+                .toList()
+            
+            // Parse is_strong_focus array
+            val isStrongFocusMatch = Regex(""""is_strong_focus"\s*:\s*\[(.*?)]""").find(jsonString)
+            
+            if (isStrongFocusMatch == null) {
+                Log.w("ChatViewModel", "No is_strong_focus found in JSON")
+                return emptyList()
+            }
+            
+            val isStrongFocusStr = isStrongFocusMatch.groupValues[1]
+            val strongFlags = isStrongFocusStr.split(",")
+                .map { it.trim().lowercase() == "true" }
+            
+            // Filter: return only points where is_strong_focus = true
+            val strongFocusPoints = points.filterIndexed { index, _ ->
+                index < strongFlags.size && strongFlags[index]
+            }
+            
+            if (strongFocusPoints.isEmpty()) {
+                Log.d("ChatViewModel", "No strong focus points found")
+            } else {
+                Log.d("ChatViewModel", "Deep Empathy strong focus points: $strongFocusPoints")
+            }
+            
+            return strongFocusPoints
+        } catch (e: Exception) {
+            Log.e("ChatViewModel", "Error parsing Deep Empathy JSON", e)
+            return emptyList()
         }
     }
 }

@@ -14,7 +14,9 @@ import javax.inject.Singleton
  */
 @Singleton
 class KnowledgeDocumentRepository @Inject constructor(
-    private val database: YourOwnAIDatabase
+    private val database: YourOwnAIDatabase,
+    private val documentEmbeddingRepository: DocumentEmbeddingRepository,
+    private val aiConfigRepository: AIConfigRepository
 ) {
     private val dao = database.knowledgeDocumentDao()
     
@@ -35,38 +37,109 @@ class KnowledgeDocumentRepository @Inject constructor(
     }
     
     /**
-     * Create new document
+     * Create new document and process it for RAG
      */
-    suspend fun createDocument(name: String, content: String) {
-        val now = System.currentTimeMillis()
-        val entity = KnowledgeDocumentEntity(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            content = content,
-            createdAt = now,
-            updatedAt = now,
-            sizeBytes = content.toByteArray().size
-        )
-        dao.insertDocument(entity)
+    suspend fun createDocument(name: String, content: String): Result<String> {
+        return try {
+            val now = System.currentTimeMillis()
+            val documentId = UUID.randomUUID().toString()
+            val entity = KnowledgeDocumentEntity(
+                id = documentId,
+                name = name,
+                content = content,
+                createdAt = now,
+                updatedAt = now,
+                sizeBytes = content.toByteArray().size
+            )
+            dao.insertDocument(entity)
+            
+            // Get current RAG settings
+            val config = aiConfigRepository.getAIConfig()
+            
+            // Process document for RAG (chunk and embed)
+            if (config.ragEnabled) {
+                documentEmbeddingRepository.processDocument(
+                    documentId = documentId,
+                    documentName = name,
+                    content = content,
+                    chunkSize = config.ragChunkSize,
+                    chunkOverlap = config.ragChunkOverlap
+                )
+            }
+            
+            Result.success(documentId)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
     
     /**
-     * Update document
+     * Update document and reprocess for RAG
      */
-    suspend fun updateDocument(document: KnowledgeDocument) {
-        val entity = document.toEntity().copy(
-            updatedAt = System.currentTimeMillis(),
-            sizeBytes = document.content.toByteArray().size
-        )
-        dao.updateDocument(entity)
+    suspend fun updateDocument(document: KnowledgeDocument): Result<Unit> {
+        return try {
+            val entity = document.toEntity().copy(
+                updatedAt = System.currentTimeMillis(),
+                sizeBytes = document.content.toByteArray().size
+            )
+            dao.updateDocument(entity)
+            
+            // Get current RAG settings
+            val config = aiConfigRepository.getAIConfig()
+            
+            // Reprocess document for RAG if enabled
+            if (config.ragEnabled) {
+                // Delete old chunks
+                documentEmbeddingRepository.deleteDocumentChunks(
+                    documentId = document.id,
+                    documentName = document.name
+                )
+                
+                // Process with new content
+                documentEmbeddingRepository.processDocument(
+                    documentId = document.id,
+                    documentName = document.name,
+                    content = document.content,
+                    chunkSize = config.ragChunkSize,
+                    chunkOverlap = config.ragChunkOverlap
+                )
+            }
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
     
     /**
-     * Delete document
+     * Delete document and its chunks
      */
-    suspend fun deleteDocument(documentId: String) {
-        dao.deleteById(documentId)
+    suspend fun deleteDocument(documentId: String): Result<Unit> {
+        return try {
+            // Get document info for progress display
+            val document = dao.getDocumentById(documentId)
+            
+            if (document != null) {
+                // Delete chunks first
+                documentEmbeddingRepository.deleteDocumentChunks(
+                    documentId = documentId,
+                    documentName = document.name
+                )
+            }
+            
+            // Delete document
+            dao.deleteById(documentId)
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
+    
+    /**
+     * Get processing status flow
+     */
+    fun getProcessingStatus() = documentEmbeddingRepository.processingStatus
     
     // Mappers
     private fun KnowledgeDocumentEntity.toDomain() = KnowledgeDocument(

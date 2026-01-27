@@ -111,9 +111,6 @@ fun YourOwnAIApp(settingsManager: SettingsManager) {
                             // Return to previous screen, default to HOME if null
                             currentScreen = previousScreen ?: Screen.HOME
                             previousScreen = null
-                        },
-                        onViewMemories = {
-                            // TODO: Navigate to memories screen
                         }
                     )
                 }

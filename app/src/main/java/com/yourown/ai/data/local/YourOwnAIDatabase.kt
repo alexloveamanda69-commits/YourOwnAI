@@ -31,7 +31,7 @@ import com.yourown.ai.data.local.entity.*
         SystemPromptEntity::class,
         KnowledgeDocumentEntity::class,
     ],
-    version = 5,  // Increased: added KnowledgeDocumentEntity
+    version = 6,  // Increased: removed category column from MemoryEntity
     exportSchema = true
 )
 abstract class YourOwnAIDatabase : RoomDatabase() {

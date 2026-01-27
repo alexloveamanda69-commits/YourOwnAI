@@ -1,8 +1,10 @@
 package com.yourown.ai.di
 
 import com.yourown.ai.data.service.AIServiceImpl
+import com.yourown.ai.data.service.EmbeddingServiceImpl
 import com.yourown.ai.data.service.LlamaServiceImpl
 import com.yourown.ai.domain.service.AIService
+import com.yourown.ai.domain.service.EmbeddingService
 import com.yourown.ai.domain.service.LlamaService
 import dagger.Binds
 import dagger.Module
@@ -19,6 +21,12 @@ abstract class ServiceModule {
     abstract fun bindLlamaService(
         llamaServiceImpl: LlamaServiceImpl
     ): LlamaService
+    
+    @Binds
+    @Singleton
+    abstract fun bindEmbeddingService(
+        embeddingServiceImpl: EmbeddingServiceImpl
+    ): EmbeddingService
     
     @Binds
     @Singleton

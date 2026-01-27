@@ -142,10 +142,17 @@ The app should feel like a **tool**, not a product with personality. It's your s
 - **Streaming responses** - real-time AI generation with smooth animations
 - **Multiple conversations** - organize chats by topic
 - **Model switching** - change AI provider/model per conversation
-- **Markdown rendering** - **bold**, *italic*, [clickable links](url), and > blockquotes
+- **Rich markdown rendering**:
+  - **bold**, *italic*, [clickable links](url)
+  - > blockquotes for emphasis
+  - # Headings (H1, H2, H3)
+  - Horizontal rules (---, ***, ___)
 - **Request logs** - inspect full API requests (JSON) for debugging
-- **Message history** - configurable context length (5-50 messages)
+  - View system prompt, messages, context (Memory, RAG, Deep Empathy)
+  - Copy logs for troubleshooting
+- **Message history** - configurable context length (1-25 messages)
 - **Conversation titles** - auto-generated or manual edit
+- **Context-aware responses** - AI uses Memory, RAG, and Deep Empathy (API models only)
 
 #### 🤖 AI Providers & Models
 - **Deepseek** - deepseek-chat, deepseek-reasoner
@@ -160,11 +167,41 @@ The app should feel like a **tool**, not a product with personality. It's your s
 
 #### ⚙️ AI Configuration
 - **System prompt editor** - customize AI personality
+- **Local system prompt** - separate prompt for offline models
 - **User context** - persistent facts about you
 - **Temperature** (0.0-2.0) - control creativity vs consistency
 - **Top-P** (0.0-1.0) - nucleus sampling for diversity
-- **Max tokens** - response length limit
-- **Deep Empathy mode** - experimental emotional intelligence flag
+- **Max tokens** - response length limit (256-8192)
+- **Message history limit** - context window size (1-25 messages)
+- **Advanced settings** - collapsible sections for each AI feature
+
+#### 🧠 Advanced AI Features (API Models Only)
+- **Deep Empathy mode** - emotional intelligence with dialogue focus detection
+  - Automatic analysis of strong emotional moments
+  - Configurable focus prompt ("Удержи это рядом: {dialogue_focus}")
+  - Custom analysis prompt with locked JSON format
+  - Real-time context injection for empathetic responses
+- **Long-term Memory** - persistent memory across conversations
+  - Automatic extraction from user messages
+  - Semantic search with embeddings (cosine similarity)
+  - Configurable extraction prompt with placeholder validation
+  - Age filter (0-30 days) - only retrieve older memories
+  - Limit control (1-10 memories per request)
+  - Manual memory management (view, edit, delete)
+  - Smart context injection with configurable title & instructions
+- **RAG (Retrieval Augmented Generation)** - knowledge documents
+  - Upload text/markdown documents for AI context
+  - Automatic chunking with configurable size (128-2048 chars)
+  - Chunk overlap control (0-256 chars) for context preservation
+  - Semantic search across chunks (cosine similarity + keyword boost)
+  - Document processing with progress tracking
+  - Limit control (1-10 chunks per request)
+  - Configurable title & instructions for knowledge context
+- **Embedding Models** - local semantic understanding
+  - all-MiniLM-L6-v2 (~25 MB) - fast, basic quality
+  - mxbai-embed-large (~335 MB) - slower, high quality
+  - Download queue with progress tracking
+  - Automatic model selection for Memory & RAG
 
 #### 🎨 Appearance & Accessibility
 - **Three themes** - Light, Dark, System
@@ -181,11 +218,12 @@ The app should feel like a **tool**, not a product with personality. It's your s
 - Daily/weekly/monthly statistics
 - Export usage reports
 
-#### 🧠 Advanced AI
-- **RAG** - Upload documents (PDF/TXT) for contextual responses
-- **Long-term memory** - AI remembers facts across conversations
+#### 🧠 Additional AI Features
 - **Message alternatives** - regenerate or swipe for different responses
 - **Voice chat** - Speech-to-text and text-to-speech
+- **PDF document support** - extract text from PDFs for RAG
+- **Multi-modal** - image input for vision models
+- **Google account sync** - backup conversations and settings
 
 #### 🔒 Security Enhancements
 - Biometric authentication option
@@ -203,13 +241,16 @@ The app should feel like a **tool**, not a product with personality. It's your s
 
 - **Language:** Kotlin 100%
 - **UI:** Jetpack Compose + Material 3 Dynamic Color
-- **Architecture:** Clean Architecture (MVVM)
+- **Architecture:** Clean Architecture (MVVM + Repository Pattern)
 - **Local Storage:** Room Database + EncryptedSharedPreferences (Android Keystore)
-- **Async:** Coroutines + Flow
+- **Async:** Coroutines + Flow (reactive UI updates)
 - **DI:** Hilt (Dagger)
-- **Local AI:** Llamatik (llama.cpp Android wrapper)
+- **Local AI:** Llamatik (llama.cpp Android wrapper via JNI)
+- **Embeddings:** Llamatik embedding API (all-MiniLM, mxbai-embed)
+- **Semantic Search:** Cosine similarity + keyword boost + exact match boost
 - **API Clients:** OkHttp + Retrofit + Gson
-- **Security:** Certificate Pinning, Network Security Config
+- **Streaming:** Server-Sent Events (SSE) for real-time responses
+- **Security:** Certificate Pinning, Network Security Config, API key encryption
 - **Build:** Gradle 8.11+ with R8/ProGuard obfuscation
 
 ## 🚀 Getting Started
@@ -309,9 +350,18 @@ keytool -genkey -v -keystore yourownnai-release.keystore \
 ### Basic Chat
 - Type your message in any conversation
 - AI responds using your selected model (API or local)
+- **API models** get enhanced context:
+  - Deep Empathy focus detection for emotional responses
+  - Relevant memories retrieved via semantic search
+  - RAG chunks from your knowledge documents
+- **Local models** use simple system prompt + latest message
 - Streaming responses with smooth animations
 - All conversations stored locally and encrypted
-- Markdown rendering: **bold**, *italic*, [links](url), and > blockquotes
+- Rich markdown rendering:
+  - **bold**, *italic*, [links](url)
+  - > blockquotes
+  - # Headings (H1, H2, H3)
+  - Horizontal rules (---, ***, ___)
 
 ### Switching Models
 - Tap model selector at top of chat
@@ -321,24 +371,73 @@ keytool -genkey -v -keystore yourownnai-release.keystore \
 - Model persists per conversation
 
 ### Customizing AI Behavior
-1. Settings → System Prompt
-2. Edit the default prompt or write your own
+1. **Settings → AI Configuration**
+2. Edit system prompts:
+   - **System Prompt** - for API models
+   - **Local System Prompt** - for offline models
 3. Adjust parameters:
    - **Temperature** (0.0-2.0) - creativity vs consistency
    - **Top-P** (0.0-1.0) - diversity of word choices
-   - **Max Tokens** - response length limit
-   - **Message History** - how many messages to include as context
-   - **Deep Empathy** - enhanced emotional intelligence (experimental)
+   - **Max Tokens** (256-8192) - response length limit
+   - **Message History** (1-25) - context window size
+4. **Enable Advanced Features** (API models only):
+   - **Deep Empathy** - emotional intelligence with focus detection
+     - Customize focus prompt and analysis prompt
+   - **Memory** - long-term memory system
+     - Edit extraction prompt
+     - Set memory limit (1-10)
+     - Configure age filter (0-30 days)
+     - Customize memory title and instructions
+   - **RAG** - knowledge documents
+     - Upload text/markdown documents
+     - Configure chunk size (128-2048) and overlap (0-256)
+     - Set chunk limit (1-10)
+     - Customize RAG title and instructions
+5. **Advanced Settings** - expand each section to customize:
+   - Context Instructions - how AI uses additional context
+   - Memory Instructions - how AI interprets memories
+   - RAG Instructions - how AI uses knowledge documents
+   - Deep Empathy Analysis - focus detection prompt
+
+### Managing Memories
+1. **Automatic extraction** - AI extracts key facts from your messages
+2. **View memories** - Settings → Memory → "Saved Memories"
+3. **Edit memories** - tap any memory to edit or delete
+4. **Configure extraction**:
+   - Edit Memory Extraction Prompt (requires `{text}` placeholder)
+   - Set Memory Limit (1-10 memories per request)
+   - Set Age Filter (0-30 days) - only retrieve older memories
+5. **Customize presentation**:
+   - Memory Title - how memories are labeled in context
+   - Memory Instructions - how AI should interpret memories
+
+### Managing Knowledge Documents (RAG)
+1. **Upload documents** - Settings → RAG → "+" button
+2. **Add text/markdown** - paste or type content
+3. **Automatic processing**:
+   - Documents are chunked (configurable size: 128-2048 chars)
+   - Chunks overlap for context preservation (0-256 chars)
+   - Embeddings generated for semantic search
+   - Progress bar shows processing status
+4. **Delete documents** - swipe left or tap delete icon
+5. **Configure retrieval**:
+   - RAG Chunk Limit (1-10 chunks per request)
+   - Chunk Size and Overlap in Advanced RAG Settings
+6. **Customize presentation**:
+   - RAG Title - how knowledge is labeled in context
+   - RAG Instructions - how AI should use documents
 
 ### Debugging API Calls
 1. Long press any AI message
 2. Select "View Request Logs"
-3. See complete JSON snapshot:
-   - System prompt
-   - Messages sent
-   - Model parameters
-   - AI flags
-4. Copy logs for troubleshooting
+3. See complete context snapshot:
+   - **System prompt** - active prompt for this model
+   - **Enhanced context** - Memory, RAG chunks, Deep Empathy focus
+   - **Messages** - conversation history sent to AI
+   - **Model parameters** - temperature, top-p, max tokens
+   - **AI flags** - Deep Empathy, Memory, RAG status
+4. Copy logs for troubleshooting or sharing
+5. Verify what context was actually sent to the AI
 
 ## 🏗 Project Structure
 
@@ -348,23 +447,64 @@ YourOwnAI/
 │   ├── src/main/
 │   │   ├── java/com/yourown/ai/
 │   │   │   ├── data/
-│   │   │   │   ├── local/          # Room DB, DAOs, Entities
-│   │   │   │   ├── remote/         # API clients (Deepseek, OpenAI, x.ai)
-│   │   │   │   ├── repository/     # Data repositories
-│   │   │   │   ├── service/        # AI service implementations
-│   │   │   │   └── llama/          # Llamatik wrapper for local models
+│   │   │   │   ├── local/
+│   │   │   │   │   ├── dao/              # DAOs for conversations, messages, memories, documents
+│   │   │   │   │   ├── entity/           # Room entities with @Entity annotations
+│   │   │   │   │   ├── preferences/      # SettingsManager (DataStore)
+│   │   │   │   │   └── YourOwnAIDatabase.kt
+│   │   │   │   ├── remote/
+│   │   │   │   │   ├── deepseek/         # Deepseek API client
+│   │   │   │   │   ├── openai/           # OpenAI API client (GPT-5, o1/o3)
+│   │   │   │   │   └── xai/              # x.ai Grok API client
+│   │   │   │   ├── repository/
+│   │   │   │   │   ├── AIConfigRepository.kt
+│   │   │   │   │   ├── ApiKeyRepository.kt
+│   │   │   │   │   ├── ConversationRepository.kt
+│   │   │   │   │   ├── MessageRepository.kt
+│   │   │   │   │   ├── MemoryRepository.kt           # Memory with semantic search
+│   │   │   │   │   ├── KnowledgeDocumentRepository.kt
+│   │   │   │   │   ├── DocumentEmbeddingRepository.kt # RAG chunks + embeddings
+│   │   │   │   │   ├── LocalModelRepository.kt
+│   │   │   │   │   └── SystemPromptRepository.kt
+│   │   │   │   ├── service/
+│   │   │   │   │   ├── AIServiceImpl.kt              # API model service
+│   │   │   │   │   ├── LlamaServiceImpl.kt           # Local model service
+│   │   │   │   │   └── EmbeddingServiceImpl.kt       # Embedding service
+│   │   │   │   └── llama/
+│   │   │   │       ├── LlamaCppWrapper.kt            # JNI wrapper for llama.cpp
+│   │   │   │       └── EmbeddingWrapper.kt           # JNI wrapper for embeddings
 │   │   │   ├── domain/
-│   │   │   │   ├── model/          # Domain models, enums
-│   │   │   │   └── service/        # Service interfaces
+│   │   │   │   ├── model/                # Models: AIConfig, Message, Memory, etc.
+│   │   │   │   ├── prompt/               # AIPrompts.kt (Deep Empathy, Memory)
+│   │   │   │   ├── service/              # Service interfaces
+│   │   │   │   └── util/                 # SemanticSearchUtil.kt (cosine similarity)
 │   │   │   ├── presentation/
-│   │   │   │   ├── onboarding/     # First launch setup
-│   │   │   │   ├── chat/           # Chat UI and ViewModels
-│   │   │   │   ├── settings/       # Settings screens and dialogs
-│   │   │   │   ├── home/           # Conversations list
-│   │   │   │   └── theme/          # Material 3 theming
-│   │   │   ├── di/                 # Hilt dependency injection
+│   │   │   │   ├── onboarding/           # First launch setup
+│   │   │   │   ├── chat/
+│   │   │   │   │   ├── ChatScreen.kt
+│   │   │   │   │   ├── ChatViewModel.kt  # Context building (Memory, RAG, Deep Empathy)
+│   │   │   │   │   └── components/       # MessageBubble, ModelSelector, etc.
+│   │   │   │   ├── settings/
+│   │   │   │   │   ├── SettingsScreen.kt
+│   │   │   │   │   ├── SettingsViewModel.kt
+│   │   │   │   │   ├── SettingsDialogs.kt
+│   │   │   │   │   ├── components/       # Advanced settings dialogs
+│   │   │   │   │   │   ├── AdvancedSettingsDialogs.kt
+│   │   │   │   │   │   ├── MemoryDialogs.kt
+│   │   │   │   │   │   ├── KnowledgeDocumentDialogs.kt
+│   │   │   │   │   │   ├── DeepEmpathyAnalysisDialog.kt
+│   │   │   │   │   │   └── SystemPromptDialogs.kt
+│   │   │   │   │   └── dialogs/          # ApiKeyDialog, AppearanceDialog
+│   │   │   │   ├── home/                 # Conversations list
+│   │   │   │   └── theme/                # Material 3 theming
+│   │   │   ├── di/                       # Hilt modules
+│   │   │   │   ├── AppModule.kt
+│   │   │   │   ├── DatabaseModule.kt
+│   │   │   │   ├── NetworkModule.kt
+│   │   │   │   ├── RepositoryModule.kt
+│   │   │   │   └── ServiceModule.kt
 │   │   │   └── YourOwnAIApplication.kt
-│   │   ├── res/                    # Resources
+│   │   ├── res/
 │   │   │   ├── xml/network_security_config.xml
 │   │   │   └── values/strings.xml
 │   │   └── AndroidManifest.xml
@@ -372,6 +512,9 @@ YourOwnAI/
 │   └── proguard-rules.pro
 ├── gradle/
 ├── build.gradle.kts
+├── ARCHITECTURE.md           # Detailed architecture documentation
+├── SECURITY.md              # Security best practices
+├── CHANGELOG.md             # Version history
 └── README.md
 ```
 
@@ -379,12 +522,16 @@ YourOwnAI/
 
 ### What We Store Locally
 - Chat conversations (Room Database)
-- Messages with request logs for debugging
+- Messages with full request logs (system prompt, context, parameters)
+- Long-term memories extracted from conversations
+- Knowledge documents with embeddings and chunks
 - API keys (encrypted with Android Keystore)
-- User preferences (theme, colors, fonts)
-- System prompt and user context
-- AI configuration (temperature, top-p, etc.)
+- User preferences (theme, colors, fonts, text size)
+- System prompts (default, local, custom)
+- AI configuration (temperature, top-p, max tokens, message history)
+- Advanced AI settings (Deep Empathy, Memory, RAG prompts and instructions)
 - Downloaded local models (Qwen 2.5, Llama 3.2)
+- Downloaded embedding models (all-MiniLM, mxbai-embed)
 
 ### What We DON'T Collect
 - ❌ No analytics or telemetry
@@ -436,17 +583,32 @@ YourOwnAI/
 - [x] Markdown rendering (bold, italic, links, blockquotes)
 - [x] Request logs for debugging
 
-### Phase 2: Advanced Features (In Progress)
-- [ ] RAG - Document upload (PDF/TXT)
-- [ ] Long-term memory system
+### Phase 2: Advanced Features ✅ (Completed)
+- [x] Embedding models download (all-MiniLM, mxbai-embed)
+- [x] Long-term memory system with semantic search
+- [x] Memory extraction with configurable prompts
+- [x] Memory age filter (0-30 days)
+- [x] RAG - Document upload (text/markdown)
+- [x] Document chunking with configurable size and overlap
+- [x] Semantic search with keyword boost
+- [x] Deep Empathy mode with focus detection
+- [x] Advanced settings UI with collapsible sections
+- [x] Customizable prompts and instructions for all features
+- [x] Request logs with full context (Memory, RAG, Deep Empathy)
+- [x] Markdown rendering (headings, horizontal rules)
+- [x] Placeholder validation for prompts
+
+### Phase 3: Additional Features (In Progress)
 - [ ] Message regeneration
 - [ ] Message alternatives (swipe)
 - [ ] Usage tracking (tokens, cost)
 - [ ] Voice chat (STT/TTS)
 - [ ] Export/backup conversations
+- [ ] PDF document support for RAG
 - [ ] Anthropic Claude integration
+- [ ] Google account sync
 
-### Phase 3: Polish & Security
+### Phase 4: Polish & Security
 - [ ] Biometric authentication
 - [ ] Screenshot prevention for sensitive screens
 - [ ] Root detection
@@ -454,7 +616,7 @@ YourOwnAI/
 - [ ] Performance optimization for large conversations
 - [ ] Accessibility improvements
 
-### Phase 4: Distribution
+### Phase 5: Distribution
 - [ ] Production keystore setup
 - [ ] Google Play release
 - [ ] F-Droid release
@@ -541,6 +703,27 @@ A: Ensure you're on the latest version. We've added:
 - Automatic corruption detection
 - Download queue system
 - Memory optimization (largeHeap)
+
+**Q: What is Deep Empathy mode?**
+A: Deep Empathy analyzes your messages for strong emotional moments and helps the AI respond with appropriate emotional intelligence. It automatically detects focus points (actions, feelings, desires) and injects them into the AI's context. Only works with API models.
+
+**Q: How does Memory work?**
+A: The AI automatically extracts key facts from your conversations and stores them. When you chat, it retrieves relevant memories (using semantic search) and includes them in context. You can view, edit, or delete memories anytime. Memory has an age filter - by default, only memories older than 2 days are retrieved.
+
+**Q: What is RAG?**
+A: Retrieval Augmented Generation. Upload text documents (personal notes, articles, guides) and the AI will use them to provide more informed responses. Documents are chunked, embedded, and retrieved using semantic search.
+
+**Q: Do Memory and RAG work offline?**
+A: No. These features require embedding models for semantic search and only work with API models (not local models). Embedding models are downloaded separately (all-MiniLM ~25MB or mxbai-embed ~335MB).
+
+**Q: Can I customize the prompts?**
+A: Yes! Almost every prompt is customizable:
+- System prompt for API models
+- Local system prompt for offline models
+- Memory extraction prompt (how AI extracts memories)
+- Deep Empathy focus prompt and analysis prompt
+- Context instructions, Memory instructions, RAG instructions
+All prompts have placeholder validation to prevent breaking functionality.
 
 **Q: Can I contribute?**
 A: Absolutely! Fork the repo, make changes, and submit a PR. All contributions welcome.

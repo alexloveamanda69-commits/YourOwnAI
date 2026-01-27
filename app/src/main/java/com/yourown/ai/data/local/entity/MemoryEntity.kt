@@ -30,7 +30,6 @@ import com.yourown.ai.domain.prompt.AIPrompts
     indices = [
         Index("conversation_id"),
         Index("message_id"),
-        Index("category"),
         Index("created_at")
     ]
 )
@@ -43,9 +42,6 @@ data class MemoryEntity(
     
     @ColumnInfo(name = "message_id")
     val messageId: String,
-    
-    @ColumnInfo(name = "category")
-    val category: String, // Stored as string for Room
     
     @ColumnInfo(name = "fact")
     val fact: String,
@@ -65,7 +61,6 @@ fun MemoryEntity.toDomain(): MemoryEntry {
         id = id,
         conversationId = conversationId,
         messageId = messageId,
-        category = AIPrompts.Memory.MemoryCategory.valueOf(category),
         fact = fact,
         createdAt = createdAt,
         isArchived = isArchived
@@ -77,7 +72,6 @@ fun MemoryEntry.toEntity(): MemoryEntity {
         id = id,
         conversationId = conversationId,
         messageId = messageId,
-        category = category.name,
         fact = fact,
         createdAt = createdAt,
         isArchived = isArchived

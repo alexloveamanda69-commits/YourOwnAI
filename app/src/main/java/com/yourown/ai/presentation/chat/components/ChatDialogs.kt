@@ -111,7 +111,11 @@ fun RequestLogsDialog(
                             Icon(Icons.Default.ContentCopy, "Copy logs")
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, "Close")
+                            Icon(
+                                Icons.Default.Close, 
+                                "Close",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
                 }

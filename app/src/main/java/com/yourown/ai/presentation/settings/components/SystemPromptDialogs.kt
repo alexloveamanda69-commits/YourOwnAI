@@ -58,7 +58,11 @@ fun SystemPromptsListDialog(
                             Icon(Icons.Default.Add, "Add new prompt")
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, "Close")
+                            Icon(
+                                Icons.Default.Close, 
+                                "Close",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     }
                 }
@@ -308,7 +312,11 @@ fun EditPromptDialog(
                         fontWeight = FontWeight.SemiBold
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, "Close")
+                        Icon(
+                            Icons.Default.Close, 
+                            "Close",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 }
                 

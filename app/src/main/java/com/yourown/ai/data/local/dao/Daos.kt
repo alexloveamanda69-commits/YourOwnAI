@@ -84,6 +84,9 @@ interface DocumentChunkDao {
     @Query("SELECT * FROM document_chunks WHERE documentId = :documentId ORDER BY chunkIndex ASC")
     suspend fun getChunksByDocument(documentId: String): List<DocumentChunkEntity>
     
+    @Query("SELECT * FROM document_chunks ORDER BY documentId, chunkIndex ASC")
+    suspend fun getAllChunks(): List<DocumentChunkEntity>
+    
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChunk(chunk: DocumentChunkEntity)
     
