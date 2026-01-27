@@ -291,7 +291,7 @@ For testing release builds (with ProGuard/R8):
 # APK location: app/build/outputs/apk/release/app-release.apk
 ```
 
-2. **For production (Google Play)**
+2. **For production**
 ```bash
 # Generate production keystore (one time only)
 keytool -genkey -v -keystore yourownnai-release.keystore \
