@@ -1,23 +1,34 @@
 package com.yourown.ai.presentation.chat.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.yourown.ai.domain.model.Message
@@ -32,7 +43,13 @@ fun EditTitleDialog(
     onDismiss: () -> Unit,
     onSave: (String) -> Unit
 ) {
-    var title by remember { mutableStateOf(currentTitle) }
+    // Use remember with key to reset state when dialog reopens with different title
+    var title by remember(currentTitle) { mutableStateOf(currentTitle) }
+    
+    // Reset title when currentTitle changes (e.g., when dialog reopens)
+    LaunchedEffect(currentTitle) {
+        title = currentTitle
+    }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -486,16 +503,19 @@ private fun SystemPromptItem(
 }
 
 /**
- * Dialog for exporting chat
+ * Dialog for exporting chat with markdown rendering and like filter
  */
 @Composable
 fun ExportChatDialog(
     chatText: String,
     onDismiss: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onFilterChanged: (Boolean) -> Unit = {}
 ) {
     val clipboardManager = LocalClipboardManager.current
     var showCopiedSnackbar by remember { mutableStateOf(false) }
+    var filterByLikes by remember { mutableStateOf(false) }
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -522,18 +542,57 @@ fun ExportChatDialog(
                         fontWeight = FontWeight.SemiBold
                     )
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, "Close")
+                        Icon(
+                            Icons.Default.Close, 
+                            "Close",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
+                }
+                
+                // Filter by likes checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            filterByLikes = !filterByLikes
+                            onFilterChanged(filterByLikes)
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = filterByLikes,
+                        onCheckedChange = {
+                            filterByLikes = it
+                            onFilterChanged(it)
+                        }
+                    )
+                    Text(
+                        text = "Export only liked messages",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(
+                        Icons.Default.Favorite,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
                 
                 // Info text
                 Text(
-                    text = "Chat exported as text",
+                    text = if (filterByLikes) {
+                        "Showing only liked messages"
+                    } else {
+                        "Chat exported with markdown formatting"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
-                // Chat content preview
+                // Chat content preview with markdown rendering
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -541,13 +600,27 @@ fun ExportChatDialog(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = MaterialTheme.shapes.medium
                 ) {
-                    Text(
-                        text = chatText,
+                    val scrollState = rememberScrollState()
+                    val annotatedText = parseMarkdownForExport(chatText)
+                    
+                    ClickableText(
+                        text = annotatedText,
                         modifier = Modifier
                             .padding(12.dp)
-                            .verticalScroll(rememberScrollState()),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            .verticalScroll(scrollState),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
+                        onClick = { offset ->
+                            annotatedText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                .firstOrNull()?.let { annotation ->
+                                    try {
+                                        uriHandler.openUri(annotation.item)
+                                    } catch (e: Exception) {
+                                        // Handle invalid URL
+                                    }
+                                }
+                        }
                     )
                 }
                 
@@ -602,4 +675,332 @@ fun ExportChatDialog(
             }
         }
     }
+}
+
+/**
+ * Parse markdown for export dialog (simplified version for preview)
+ * Supports: bold, italic, links, headings, blockquotes, horizontal rules
+ */
+@Composable
+private fun parseMarkdownForExport(text: String): AnnotatedString {
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val linkColor = MaterialTheme.colorScheme.primary
+    val quoteColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    val quoteBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+    
+    return buildAnnotatedString {
+        val lines = text.split("\n")
+
+        lines.forEachIndexed { lineIndex, line ->
+            val trimmedLine = line.trimStart()
+            
+            // Check for horizontal divider (---, ***, ___)
+            if (trimmedLine.matches(Regex("^(---|\\*\\*\\*|___)\\s*$"))) {
+                withStyle(SpanStyle(color = quoteBorderColor)) {
+                    append("─".repeat(20))
+                }
+                if (lineIndex < lines.size - 1) {
+                    append("\n")
+                }
+                return@forEachIndexed
+            }
+            
+            // Check for headings (# H1, ## H2, ### H3)
+            val headingMatch = Regex("^(#{1,3})\\s+(.+)$").find(trimmedLine)
+            if (headingMatch != null) {
+                val level = headingMatch.groupValues[1].length
+                val headingText = headingMatch.groupValues[2]
+                
+                val headingSize = when (level) {
+                    1 -> 1.5f // H1
+                    2 -> 1.3f // H2
+                    else -> 1.15f // H3
+                }
+                
+                withStyle(SpanStyle(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * headingSize,
+                    color = MaterialTheme.colorScheme.primary
+                )) {
+                    append(headingText)
+                }
+                
+                if (lineIndex < lines.size - 1) {
+                    append("\n")
+                }
+                return@forEachIndexed
+            }
+            
+            // Check for blockquote (> text)
+            val isQuote = trimmedLine.startsWith(">")
+            val processLine = if (isQuote) {
+                trimmedLine.removePrefix(">").trimStart()
+            } else {
+                line
+            }
+            
+            // Add quote indicator
+            if (isQuote) {
+                withStyle(SpanStyle(color = quoteBorderColor)) {
+                    append("▌ ")
+                }
+            }
+            
+            // Regular expressions for markdown
+            val boldLinkRegex = """\*\*\[([^\]]+)\]\(([^\)]+)\)\*\*""".toRegex()
+            val linkRegex = """\[([^\]]+)\]\(([^\)]+)\)""".toRegex()
+            val boldRegex = """\*\*(.+?)\*\*""".toRegex()
+            val italicRegex = """\*([^*]+?)\*""".toRegex()
+
+            // Find all matches
+            val matches = mutableListOf<Triple<IntRange, String, MatchResult>>()
+            boldLinkRegex.findAll(processLine).forEach { matches.add(Triple(it.range, "boldlink", it)) }
+            linkRegex.findAll(processLine).forEach { matches.add(Triple(it.range, "link", it)) }
+            boldRegex.findAll(processLine).forEach { matches.add(Triple(it.range, "bold", it)) }
+            italicRegex.findAll(processLine).forEach { matches.add(Triple(it.range, "italic", it)) }
+
+            // Remove overlapping matches
+            val filteredMatches = mutableListOf<Triple<IntRange, String, MatchResult>>()
+            matches.sortedBy { it.first.first }.forEach { current ->
+                val hasOverlap = filteredMatches.any { existing ->
+                    current.first.first < existing.first.last && current.first.last > existing.first.first
+                }
+                if (!hasOverlap) {
+                    filteredMatches.add(current)
+                }
+            }
+
+            var lastIndex = 0
+            filteredMatches.forEach { (range, type, match) ->
+                // Add text before match
+                if (lastIndex < range.first) {
+                    withStyle(SpanStyle(color = if (isQuote) quoteColor else textColor)) {
+                        append(processLine.substring(lastIndex, range.first))
+                    }
+                }
+
+                when (type) {
+                    "boldlink" -> {
+                        val label = match.groupValues[1]
+                        val url = match.groupValues[2]
+                        val start = length
+                        withStyle(SpanStyle(
+                            fontWeight = FontWeight.Bold,
+                            color = if (isQuote) quoteColor else linkColor,
+                            textDecoration = TextDecoration.Underline
+                        )) {
+                            append(label)
+                        }
+                        addStringAnnotation(
+                            tag = "URL",
+                            annotation = url,
+                            start = start,
+                            end = start + label.length
+                        )
+                    }
+                    "bold" -> {
+                        val innerText = match.groupValues[1]
+                        withStyle(SpanStyle(
+                            fontWeight = FontWeight.Bold,
+                            color = if (isQuote) quoteColor else textColor
+                        )) {
+                            append(innerText)
+                        }
+                    }
+                    "italic" -> {
+                        val innerText = match.groupValues[1]
+                        withStyle(SpanStyle(
+                            fontStyle = FontStyle.Italic,
+                            color = if (isQuote) quoteColor.copy(alpha = 0.9f) else textColor.copy(alpha = 0.8f)
+                        )) {
+                            append(innerText)
+                        }
+                    }
+                    "link" -> {
+                        val label = match.groupValues[1]
+                        val url = match.groupValues[2]
+                        val start = length
+                        withStyle(SpanStyle(
+                            color = if (isQuote) quoteColor else linkColor,
+                            textDecoration = TextDecoration.Underline
+                        )) {
+                            append(label)
+                        }
+                        addStringAnnotation(
+                            tag = "URL",
+                            annotation = url,
+                            start = start,
+                            end = start + label.length
+                        )
+                    }
+                }
+
+                lastIndex = range.last + 1
+            }
+
+            // Rest of the line
+            if (lastIndex < processLine.length) {
+                withStyle(SpanStyle(color = if (isQuote) quoteColor else textColor)) {
+                    append(processLine.substring(lastIndex))
+                }
+            }
+
+            // Line break (except for last line)
+            if (lineIndex < lines.size - 1) {
+                append("\n")
+            }
+        }
+    }
+}
+
+/**
+ * Dialog for handling errors during message generation
+ * Offers two options:
+ * 1. Retry - delete user message and try again
+ * 2. Cancel - copy user message to clipboard and delete the pair
+ */
+@Composable
+fun ErrorDialog(
+    errorMessage: String,
+    userMessageContent: String,
+    modelName: String,
+    onRetry: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Message Generation Error",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Error details
+                Text(
+                    text = "Failed to generate response from $modelName:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = errorMessage,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                // User message preview
+                Text(
+                    text = "Your message:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = userMessageContent,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(4.dp))
+                
+                // Options explanation
+                Text(
+                    text = "Choose an action:",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium
+                )
+                
+                Column(
+                    modifier = Modifier.padding(start = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Retry: Will delete this attempt and try again",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "Cancel: Will copy your message to clipboard and delete the failed attempt",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Retry")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onCancel) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Cancel & Copy")
+            }
+        }
+    )
 }

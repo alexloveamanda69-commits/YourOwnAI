@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 /**
@@ -39,6 +40,11 @@ fun ChatTopBar(
     onExportChatClick: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    
+    // Reset menu state when search mode changes to prevent issues
+    LaunchedEffect(isSearchMode) {
+        showMenu = false
+    }
     
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -121,26 +127,30 @@ fun ChatTopBar(
                     }
                     
                     // Title + Edit button
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = conversationTitle,
-                            fontWeight = FontWeight.SemiBold,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1
-                        )
-                        IconButton(
-                            onClick = onEditTitle,
-                            modifier = Modifier.size(32.dp)
+                    androidx.compose.runtime.key(conversationTitle) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = "Edit Title",
-                                modifier = Modifier.size(16.dp)
+                            Text(
+                                text = conversationTitle,
+                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
+                            IconButton(
+                                onClick = onEditTitle,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Edit Title",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
                     }
                     

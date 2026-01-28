@@ -147,12 +147,18 @@ The app should feel like a **tool**, not a product with personality. It's your s
   - > blockquotes for emphasis
   - # Headings (H1, H2, H3)
   - Horizontal rules (---, ***, ___)
+- **Message reply (swipe)** - Telegram-style message replies
+  - Reply to any message with visual preview
+  - Replied message shown in context above input
+  - Click preview to scroll to original message
+  - Visual indicator in message bubbles ("Replied to:")
+  - Swipe context sent to AI with configurable prompt
 - **Request logs** - inspect full API requests (JSON) for debugging
-  - View system prompt, messages, context (Memory, RAG, Deep Empathy)
+  - View system prompt, messages, context (Memory, RAG, Deep Empathy, Swipe)
   - Copy logs for troubleshooting
 - **Message history** - configurable context length (1-25 messages)
 - **Conversation titles** - auto-generated or manual edit
-- **Context-aware responses** - AI uses Memory, RAG, and Deep Empathy (API models only)
+- **Context-aware responses** - AI uses Memory, RAG, Deep Empathy, and Swipe context (API models only)
 
 #### 🤖 AI Providers & Models
 - **Deepseek** - deepseek-chat, deepseek-reasoner
@@ -337,7 +343,13 @@ keytool -genkey -v -keystore yourownnai-release.keystore \
 ### Basic Chat
 - Type your message in any conversation
 - AI responds using your selected model (API or local)
+- **Reply to messages** - tap Reply button on any message
+  - Visual preview appears above input field
+  - Click preview to scroll to original message
+  - Close button to cancel reply
+  - AI receives swipe context with configurable prompt
 - **API models** get enhanced context:
+  - Swipe message context (if replying to a message)
   - Deep Empathy focus detection for emotional responses
   - Relevant memories retrieved via semantic search
   - RAG chunks from your knowledge documents
@@ -382,6 +394,7 @@ keytool -genkey -v -keystore yourownnai-release.keystore \
      - Customize RAG title and instructions
 5. **Advanced Settings** - expand each section to customize:
    - Context Instructions - how AI uses additional context
+   - Swipe Message Prompt - prompt for replied messages (requires `{swipe_message}` placeholder)
    - Memory Instructions - how AI interprets memories
    - RAG Instructions - how AI uses knowledge documents
    - Deep Empathy Analysis - focus detection prompt
@@ -419,7 +432,7 @@ keytool -genkey -v -keystore yourownnai-release.keystore \
 2. Select "View Request Logs"
 3. See complete context snapshot:
    - **System prompt** - active prompt for this model
-   - **Enhanced context** - Memory, RAG chunks, Deep Empathy focus
+   - **Enhanced context** - Swipe message, Memory, RAG chunks, Deep Empathy focus
    - **Messages** - conversation history sent to AI
    - **Model parameters** - temperature, top-p, max tokens
    - **AI flags** - Deep Empathy, Memory, RAG status
@@ -469,14 +482,14 @@ YourOwnAI/
 │   │   │   │   ├── onboarding/           # First launch setup
 │   │   │   │   ├── chat/
 │   │   │   │   │   ├── ChatScreen.kt
-│   │   │   │   │   ├── ChatViewModel.kt  # Context building (Memory, RAG, Deep Empathy)
-│   │   │   │   │   └── components/       # MessageBubble, ModelSelector, etc.
+│   │   │   │   │   ├── ChatViewModel.kt  # Context building (Memory, RAG, Deep Empathy, Swipe)
+│   │   │   │   │   └── components/       # MessageBubble, ReplyPreview, ModelSelector, etc.
 │   │   │   │   ├── settings/
 │   │   │   │   │   ├── SettingsScreen.kt
 │   │   │   │   │   ├── SettingsViewModel.kt
 │   │   │   │   │   ├── SettingsDialogs.kt
 │   │   │   │   │   ├── components/       # Advanced settings dialogs
-│   │   │   │   │   │   ├── AdvancedSettingsDialogs.kt
+│   │   │   │   │   │   ├── AdvancedSettingsDialogs.kt  # Context, Memory, RAG, Swipe prompts
 │   │   │   │   │   │   ├── MemoryDialogs.kt
 │   │   │   │   │   │   ├── KnowledgeDocumentDialogs.kt
 │   │   │   │   │   │   ├── DeepEmpathyAnalysisDialog.kt
@@ -510,13 +523,14 @@ YourOwnAI/
 ### What We Store Locally
 - Chat conversations (Room Database)
 - Messages with full request logs (system prompt, context, parameters)
+- Message replies (swipe message ID and text for context)
 - Long-term memories extracted from conversations
 - Knowledge documents with embeddings and chunks
 - API keys (encrypted with Android Keystore)
 - User preferences (theme, colors, fonts, text size)
 - System prompts (default, local, custom)
 - AI configuration (temperature, top-p, max tokens, message history)
-- Advanced AI settings (Deep Empathy, Memory, RAG prompts and instructions)
+- Advanced AI settings (Deep Empathy, Memory, RAG, Swipe prompts and instructions)
 - Downloaded local models (Qwen 2.5, Llama 3.2)
 - Downloaded embedding models (all-MiniLM, mxbai-embed)
 
@@ -579,21 +593,20 @@ YourOwnAI/
 - [x] Document chunking with configurable size and overlap
 - [x] Semantic search with keyword boost
 - [x] Deep Empathy mode with focus detection
+- [x] Message reply (swipe) - Telegram-style with visual preview
 - [x] Advanced settings UI with collapsible sections
 - [x] Customizable prompts and instructions for all features
-- [x] Request logs with full context (Memory, RAG, Deep Empathy)
+- [x] Request logs with full context (Memory, RAG, Deep Empathy, Swipe)
 - [x] Markdown rendering (headings, horizontal rules)
 - [x] Placeholder validation for prompts
 
 ### Phase 3: Additional Features (In Progress)
-- [ ] Message regeneration
-- [ ] Message alternatives (swipe)
 - [ ] Usage tracking (tokens, cost)
 - [ ] Voice chat (STT/TTS)
 - [ ] Export/backup conversations
 - [ ] PDF document support for RAG
 - [ ] Anthropic Claude integration
-- [ ] Google account sync
+- [ ] Multi-modal (image input for vision models)
 
 ### Phase 4: Polish & Security
 - [ ] Biometric authentication
@@ -708,9 +721,13 @@ A: Yes! Almost every prompt is customizable:
 - System prompt for API models
 - Local system prompt for offline models
 - Memory extraction prompt (how AI extracts memories)
+- Swipe message prompt (how AI uses replied messages)
 - Deep Empathy focus prompt and analysis prompt
 - Context instructions, Memory instructions, RAG instructions
 All prompts have placeholder validation to prevent breaking functionality.
+
+**Q: How does message reply (swipe) work?**
+A: Tap the Reply button on any message to add it to context. A preview appears above the input field showing what you're replying to. The AI receives this context with a configurable prompt like "Пользователь свайпнул это сообщение в контекст — специально вернулся к этому моменту: {message}". This helps the AI understand you're referring back to a specific moment in conversation.
 
 **Q: Can I contribute?**
 A: Absolutely! Fork the repo, make changes, and submit a PR. All contributions welcome.

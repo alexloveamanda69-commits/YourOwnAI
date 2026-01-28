@@ -262,3 +262,88 @@ fun DeepEmpathyPromptDialog(
         }
     )
 }
+
+/**
+ * Dialog for editing swipe message prompt with required placeholder validation
+ */
+@Composable
+fun SwipeMessagePromptDialog(
+    currentPrompt: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+    onReset: () -> Unit
+) {
+    var text by remember { mutableStateOf(currentPrompt) }
+    val requiredPlaceholder = "{swipe_message}"
+    val hasPlaceholder = text.contains(requiredPlaceholder)
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Swipe Message Prompt") },
+        text = {
+            Column {
+                Text(
+                    text = "This prompt is sent to AI when user replies to a message",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Placeholder warning
+                if (!hasPlaceholder) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text(
+                            text = "⚠️ Required placeholder: $requiredPlaceholder",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    placeholder = { Text("Пользователь свайпнул это сообщение...") },
+                    maxLines = 6,
+                    isError = !hasPlaceholder,
+                    supportingText = if (!hasPlaceholder) {
+                        { Text("Placeholder $requiredPlaceholder is required", color = MaterialTheme.colorScheme.error) }
+                    } else null
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(text) },
+                enabled = hasPlaceholder
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = {
+                    onReset()
+                    onDismiss()
+                }) {
+                    Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Reset")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        }
+    )
+}
+

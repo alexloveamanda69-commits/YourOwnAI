@@ -52,6 +52,7 @@ class AIConfigRepository @Inject constructor(
         private val RAG_TITLE = stringPreferencesKey("rag_title")
         private val RAG_INSTRUCTIONS = stringPreferencesKey("rag_instructions")
         private val CONTEXT_INSTRUCTIONS = stringPreferencesKey("context_instructions")
+        private val SWIPE_MESSAGE_PROMPT = stringPreferencesKey("swipe_message_prompt")
         private val MESSAGE_HISTORY_LIMIT = intPreferencesKey("message_history_limit")
         
         private val USER_CONTEXT = stringPreferencesKey("user_context")
@@ -84,6 +85,7 @@ class AIConfigRepository @Inject constructor(
             ragTitle = preferences[RAG_TITLE] ?: "Твоя библиотека текстов",
             ragInstructions = preferences[RAG_INSTRUCTIONS] ?: AIConfig.DEFAULT_RAG_INSTRUCTIONS,
             contextInstructions = preferences[CONTEXT_INSTRUCTIONS] ?: AIConfig.DEFAULT_CONTEXT_INSTRUCTIONS,
+            swipeMessagePrompt = preferences[SWIPE_MESSAGE_PROMPT] ?: AIConfig.DEFAULT_SWIPE_MESSAGE_PROMPT,
             messageHistoryLimit = preferences[MESSAGE_HISTORY_LIMIT] ?: 10
         )
     }
@@ -356,6 +358,18 @@ class AIConfigRepository @Inject constructor(
         }
     }
     
+    suspend fun updateSwipeMessagePrompt(prompt: String) {
+        dataStore.edit { preferences ->
+            preferences[SWIPE_MESSAGE_PROMPT] = prompt
+        }
+    }
+    
+    suspend fun resetSwipeMessagePrompt() {
+        dataStore.edit { preferences ->
+            preferences.remove(SWIPE_MESSAGE_PROMPT)
+        }
+    }
+    
     /**
      * Update message history limit
      */
@@ -416,6 +430,7 @@ class AIConfigRepository @Inject constructor(
             ragTitle = preferences[RAG_TITLE] ?: "Твоя библиотека текстов",
             ragInstructions = preferences[RAG_INSTRUCTIONS] ?: AIConfig.DEFAULT_RAG_INSTRUCTIONS,
             contextInstructions = preferences[CONTEXT_INSTRUCTIONS] ?: AIConfig.DEFAULT_CONTEXT_INSTRUCTIONS,
+            swipeMessagePrompt = preferences[SWIPE_MESSAGE_PROMPT] ?: AIConfig.DEFAULT_SWIPE_MESSAGE_PROMPT,
             messageHistoryLimit = preferences[MESSAGE_HISTORY_LIMIT] ?: 10
         )
     }

@@ -50,7 +50,10 @@ data class MemoryEntity(
     val createdAt: Long,
     
     @ColumnInfo(name = "is_archived")
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    
+    @ColumnInfo(name = "embedding")
+    val embedding: String? = null // Stored as comma-separated floats
 )
 
 /**
@@ -67,13 +70,14 @@ fun MemoryEntity.toDomain(): MemoryEntry {
     )
 }
 
-fun MemoryEntry.toEntity(): MemoryEntity {
+fun MemoryEntry.toEntity(embedding: String? = null): MemoryEntity {
     return MemoryEntity(
         id = id,
         conversationId = conversationId,
         messageId = messageId,
         fact = fact,
         createdAt = createdAt,
-        isArchived = isArchived
+        isArchived = isArchived,
+        embedding = embedding
     )
 }

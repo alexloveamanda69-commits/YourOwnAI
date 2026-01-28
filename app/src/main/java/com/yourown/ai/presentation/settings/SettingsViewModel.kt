@@ -68,7 +68,12 @@ data class SettingsUiState(
     // Advanced settings dialogs
     val showContextInstructionsDialog: Boolean = false,
     val showMemoryInstructionsDialog: Boolean = false,
-    val showRAGInstructionsDialog: Boolean = false
+    val showRAGInstructionsDialog: Boolean = false,
+    val showSwipeMessagePromptDialog: Boolean = false,
+    // Embedding recalculation
+    val isRecalculatingEmbeddings: Boolean = false,
+    val recalculationProgress: String? = null,
+    val recalculationProgressPercent: Float = 0f // 0.0 to 1.0
 )
 
 @HiltViewModel
@@ -79,6 +84,7 @@ class SettingsViewModel @Inject constructor(
     private val aiConfigRepository: com.yourown.ai.data.repository.AIConfigRepository,
     private val systemPromptRepository: com.yourown.ai.data.repository.SystemPromptRepository,
     private val knowledgeDocumentRepository: com.yourown.ai.data.repository.KnowledgeDocumentRepository,
+    private val documentEmbeddingRepository: com.yourown.ai.data.repository.DocumentEmbeddingRepository,
     private val memoryRepository: com.yourown.ai.data.repository.MemoryRepository,
     private val deepseekClient: DeepseekClient,
     private val openAIClient: com.yourown.ai.data.remote.openai.OpenAIClient,
@@ -343,6 +349,28 @@ class SettingsViewModel @Inject constructor(
     fun resetContextInstructions() {
         viewModelScope.launch {
             aiConfigRepository.resetContextInstructions()
+        }
+    }
+    
+    // Swipe Message Prompt
+    fun showSwipeMessagePromptDialog() {
+        _uiState.update { it.copy(showSwipeMessagePromptDialog = true) }
+    }
+    
+    fun hideSwipeMessagePromptDialog() {
+        _uiState.update { it.copy(showSwipeMessagePromptDialog = false) }
+    }
+    
+    fun updateSwipeMessagePrompt(prompt: String) {
+        viewModelScope.launch {
+            aiConfigRepository.updateSwipeMessagePrompt(prompt)
+            hideSwipeMessagePromptDialog()
+        }
+    }
+    
+    fun resetSwipeMessagePrompt() {
+        viewModelScope.launch {
+            aiConfigRepository.resetSwipeMessagePrompt()
         }
     }
     
@@ -899,5 +927,103 @@ class SettingsViewModel @Inject constructor(
     
     fun hideEmbeddingRequiredDialog() {
         _uiState.update { it.copy(showEmbeddingRequiredDialog = false) }
+    }
+    
+    /**
+     * Recalculate all embeddings (Memory + RAG)
+     * Use when switching embedding models
+     */
+    fun recalculateAllEmbeddings() {
+        viewModelScope.launch {
+            try {
+                _uiState.update { 
+                    it.copy(
+                        isRecalculatingEmbeddings = true,
+                        recalculationProgress = "Starting recalculation...",
+                        recalculationProgressPercent = 0f
+                    ) 
+                }
+                
+                var memoryCount = 0
+                var ragCount = 0
+                
+                // Step 1: Recalculate Memory embeddings (50% of total progress)
+                _uiState.update { 
+                    it.copy(
+                        recalculationProgress = "Recalculating Memory embeddings...",
+                        recalculationProgressPercent = 0f
+                    ) 
+                }
+                
+                val memoryResult = memoryRepository.recalculateAllEmbeddings { current, total, percentage ->
+                    // Memory is 50% of total, so map 0-1 to 0-0.5
+                    val overallProgress = percentage * 0.5f
+                    _uiState.update { 
+                        it.copy(
+                            recalculationProgress = "Memory: $current/$total",
+                            recalculationProgressPercent = overallProgress
+                        ) 
+                    }
+                }
+                memoryCount = memoryResult.getOrNull() ?: 0
+                
+                // Step 2: Recalculate RAG embeddings (next 50% of total progress)
+                _uiState.update { 
+                    it.copy(
+                        recalculationProgress = "Recalculating RAG embeddings...",
+                        recalculationProgressPercent = 0.5f
+                    ) 
+                }
+                
+                val ragResult = documentEmbeddingRepository.recalculateAllEmbeddings { current, total, percentage ->
+                    // RAG is 50% of total, so map 0-1 to 0.5-1.0
+                    val overallProgress = 0.5f + (percentage * 0.5f)
+                    _uiState.update { 
+                        it.copy(
+                            recalculationProgress = "RAG: $current/$total chunks",
+                            recalculationProgressPercent = overallProgress
+                        ) 
+                    }
+                }
+                ragCount = ragResult.getOrNull() ?: 0
+                
+                // Done
+                _uiState.update { 
+                    it.copy(
+                        isRecalculatingEmbeddings = false,
+                        recalculationProgress = "✅ Completed! Memory: $memoryCount, RAG: $ragCount chunks",
+                        recalculationProgressPercent = 1f
+                    ) 
+                }
+                
+                // Clear progress after 3 seconds
+                kotlinx.coroutines.delay(3000)
+                _uiState.update { 
+                    it.copy(
+                        recalculationProgress = null,
+                        recalculationProgressPercent = 0f
+                    ) 
+                }
+                
+            } catch (e: Exception) {
+                android.util.Log.e("SettingsViewModel", "Error recalculating embeddings", e)
+                _uiState.update { 
+                    it.copy(
+                        isRecalculatingEmbeddings = false,
+                        recalculationProgress = "❌ Error: ${e.message}",
+                        recalculationProgressPercent = 0f
+                    ) 
+                }
+                
+                // Clear error after 5 seconds
+                kotlinx.coroutines.delay(5000)
+                _uiState.update { 
+                    it.copy(
+                        recalculationProgress = null,
+                        recalculationProgressPercent = 0f
+                    ) 
+                }
+            }
+        }
     }
 }

@@ -47,13 +47,29 @@ data class ChatUiState(
     val isSearchMode: Boolean = false,
     val showSystemPromptDialog: Boolean = false,
     val showExportDialog: Boolean = false,
+    val showErrorDialog: Boolean = false,
+    val errorDetails: ErrorDetails? = null,
+    val showModelLoadErrorDialog: Boolean = false,
+    val modelLoadErrorMessage: String? = null,
     val selectedMessageLogs: String? = null,
     val exportedChatText: String? = null,
     val searchQuery: String = "",
     val currentSearchIndex: Int = 0,
     val searchMatchCount: Int = 0,
     val inputText: String = "",
+    val replyToMessage: Message? = null, // Swiped message for reply
     val isInitialConversationsLoad: Boolean = true
+)
+
+/**
+ * Details about an error that occurred during message generation
+ */
+data class ErrorDetails(
+    val errorMessage: String,
+    val userMessageId: String,
+    val userMessageContent: String,
+    val assistantMessageId: String,
+    val modelName: String
 )
 
 @HiltViewModel
@@ -444,7 +460,14 @@ class ChatViewModel @Inject constructor(
                 Log.i("ChatViewModel", "Model loaded successfully: ${model.displayName}")
             }.onFailure { error ->
                 Log.e("ChatViewModel", "Failed to load model: ${error.message}", error)
-                // TODO: Show error to user
+                
+                // Show error dialog for model loading failure
+                _uiState.update {
+                    it.copy(
+                        showModelLoadErrorDialog = true,
+                        modelLoadErrorMessage = error.message ?: "Unknown error loading model"
+                    )
+                }
             }
         }
     }
@@ -461,6 +484,14 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(inputText = text) }
     }
     
+    fun setReplyToMessage(message: Message) {
+        _uiState.update { it.copy(replyToMessage = message) }
+    }
+    
+    fun clearReplyToMessage() {
+        _uiState.update { it.copy(replyToMessage = null) }
+    }
+    
     fun sendMessage() {
         val text = _uiState.value.inputText.trim()
         if (text.isEmpty()) return
@@ -469,18 +500,28 @@ class ChatViewModel @Inject constructor(
         val selectedModel = _uiState.value.selectedModel ?: return
         
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, inputText = "") }
+            // Get reply message before clearing UI state
+            val replyMessage = _uiState.value.replyToMessage
+            
+            _uiState.update { it.copy(isLoading = true, inputText = "", replyToMessage = null) }
+            
+            // Create user message (declare before try block for error handling)
+            val userMessage = Message(
+                id = UUID.randomUUID().toString(),
+                conversationId = conversationId,
+                role = MessageRole.USER,
+                content = text,
+                createdAt = System.currentTimeMillis(),
+                swipeMessageId = replyMessage?.id,
+                swipeMessageText = replyMessage?.content
+            )
+            
+            // Generate AI message ID (declare before try block for error handling)
+            val aiMessageId = UUID.randomUUID().toString()
+            var aiMessageCreated = false // Track if AI message was added to DB
             
             try {
-                // Create user message
-                val userMessage = Message(
-                    id = UUID.randomUUID().toString(),
-                    conversationId = conversationId,
-                    role = MessageRole.USER,
-                    content = text,
-                    createdAt = System.currentTimeMillis()
-                )
-                
+                // Add user message to repository
                 messageRepository.addMessage(userMessage)
                 
                 // Prepare AI config from settings
@@ -571,12 +612,13 @@ class ChatViewModel @Inject constructor(
                     emptyList()
                 }
                 
-                // Build enhanced context with Deep Empathy focus, memories and RAG
+                // Build enhanced context with Deep Empathy focus, swipe message, memories and RAG
                 val enhancedContext = buildEnhancedContext(
                     baseContext = userContextContent,
                     memories = relevantMemories,
                     ragChunks = relevantChunks,
-                    deepEmpathyFocus = deepEmpathyFocusPrompt
+                    deepEmpathyFocus = deepEmpathyFocusPrompt,
+                    swipeMessage = replyMessage
                 )
                 
                 // Build request logs with full context
@@ -595,7 +637,6 @@ class ChatViewModel @Inject constructor(
                 }
                 
                 // Create placeholder for AI response
-                val aiMessageId = UUID.randomUUID().toString()
                 val aiMessage = Message(
                     id = aiMessageId,
                     conversationId = conversationId,
@@ -614,6 +655,7 @@ class ChatViewModel @Inject constructor(
                 
                 // Add placeholder message
                 messageRepository.addMessage(aiMessage)
+                aiMessageCreated = true // Mark that AI message was added to DB
                 
                 // Generate response using unified AIService
                 val responseBuilder = StringBuilder()
@@ -670,23 +712,25 @@ class ChatViewModel @Inject constructor(
                 Log.e("ChatViewModel", "Error generating response", e)
                 
                 // Get model name for error message
-                val modelName = when (selectedModel) {
+                val errorModelName = when (selectedModel) {
                     is ModelProvider.Local -> selectedModel.model.modelName
                     is ModelProvider.API -> selectedModel.modelId
                 }
                 
-                // Add error message
-                val errorMessage = Message(
-                    id = UUID.randomUUID().toString(),
-                    conversationId = conversationId,
-                    role = MessageRole.ASSISTANT,
-                    content = "Error: ${e.message}",
-                    createdAt = System.currentTimeMillis(),
-                    isError = true,
-                    errorMessage = e.message,
-                    model = modelName
-                )
-                messageRepository.addMessage(errorMessage)
+                // Show error dialog instead of immediately saving error message
+                // Only include assistantMessageId if the message was actually created in DB
+                _uiState.update { 
+                    it.copy(
+                        showErrorDialog = true,
+                        errorDetails = ErrorDetails(
+                            errorMessage = e.message ?: "Unknown error",
+                            userMessageId = userMessage.id,
+                            userMessageContent = userMessage.content,
+                            assistantMessageId = if (aiMessageCreated) aiMessageId else "",
+                            modelName = errorModelName
+                        )
+                    )
+                }
             } finally {
                 _uiState.update { it.copy(isLoading = false) }
             }
@@ -711,7 +755,8 @@ class ChatViewModel @Inject constructor(
         baseContext: String,
         memories: List<com.yourown.ai.domain.model.MemoryEntry>,
         ragChunks: List<com.yourown.ai.data.local.entity.DocumentChunkEntity>,
-        deepEmpathyFocus: String? = null
+        deepEmpathyFocus: String? = null,
+        swipeMessage: Message? = null
     ): String {
         val config = _uiState.value.aiConfig
         val parts = mutableListOf<String>()
@@ -719,6 +764,12 @@ class ChatViewModel @Inject constructor(
         // Deep Empathy Focus (if present, add at the very beginning)
         if (!deepEmpathyFocus.isNullOrBlank()) {
             parts.add(deepEmpathyFocus.trim())
+        }
+        
+        // Swipe Message (reply) - add right after Deep Empathy
+        if (swipeMessage != null && config.swipeMessagePrompt.isNotBlank()) {
+            val swipePrompt = config.swipeMessagePrompt.replace("{swipe_message}", swipeMessage.content)
+            parts.add(swipePrompt.trim())
         }
 
         // Add context instructions ONLY if Memory OR RAG are enabled and have content
@@ -733,7 +784,7 @@ class ChatViewModel @Inject constructor(
             parts.add(baseContext.trim())
         }
 
-        // Memories
+        // Memories (grouped by time)
         if (memories.isNotEmpty()) {
             val memoriesText = buildString {
                 // Add title only if not blank
@@ -745,8 +796,15 @@ class ChatViewModel @Inject constructor(
                     appendLine(config.memoryInstructions)
                     appendLine()
                 }
-                memories.forEachIndexed { index, memory ->
-                    appendLine("${index + 1}. ${memory.fact}")
+                
+                // Group memories by time and add timestamps
+                val groupedMemories = groupMemoriesByTime(memories)
+                groupedMemories.forEach { (timeLabel, memoryList) ->
+                    appendLine("$timeLabel:")
+                    memoryList.forEach { memory ->
+                        appendLine("  • ${memory.fact}")
+                    }
+                    appendLine()
                 }
             }.trim()
             parts.add(memoriesText)
@@ -772,6 +830,84 @@ class ChatViewModel @Inject constructor(
         }
 
         return parts.joinToString("\n\n")
+    }
+    
+    /**
+     * Group memories by time periods with human-readable labels
+     * 
+     * Time periods:
+     * - Days: "1 день назад", "2 дня назад", ..., "7 дней назад" (1-7 days)
+     * - Weeks: "1 неделю назад", "2 недели назад", "3 недели назад" (7-21 days)
+     * - Months: "1 месяц назад", "2 месяца назад", ..., "5 месяцев назад" (21-150 days)
+     * - "Полгода назад" (150-180 days)
+     * - "Давно" (> 180 days / ~6 months)
+     */
+    private fun groupMemoriesByTime(
+        memories: List<com.yourown.ai.domain.model.MemoryEntry>
+    ): Map<String, List<com.yourown.ai.domain.model.MemoryEntry>> {
+        val currentTime = System.currentTimeMillis()
+        val groups = mutableMapOf<String, MutableList<com.yourown.ai.domain.model.MemoryEntry>>()
+        
+        memories.forEach { memory ->
+            val ageMillis = currentTime - memory.createdAt
+            val ageDays = ageMillis / (24 * 60 * 60 * 1000)
+            
+            val timeLabel = when {
+                // Days: 1-7 дней
+                ageDays < 1 -> "1 день назад"
+                ageDays < 2 -> "2 дня назад"
+                ageDays < 3 -> "3 дня назад"
+                ageDays < 4 -> "4 дня назад"
+                ageDays < 5 -> "5 дней назад"
+                ageDays < 6 -> "6 дней назад"
+                ageDays < 7 -> "7 дней назад"
+                
+                // Weeks: 1-3 недели (7-21 days)
+                ageDays < 14 -> "1 неделю назад"
+                ageDays < 21 -> "2 недели назад"
+                ageDays < 28 -> "3 недели назад"
+                
+                // Months: 1-5 месяцев (approximating 1 month = 30 days)
+                ageDays < 60 -> "1 месяц назад"    // ~30-60 days
+                ageDays < 90 -> "2 месяца назад"   // ~60-90 days
+                ageDays < 120 -> "3 месяца назад"  // ~90-120 days
+                ageDays < 150 -> "4 месяца назад"  // ~120-150 days
+                ageDays < 180 -> "5 месяцев назад" // ~150-180 days
+                
+                // Half a year and beyond
+                ageDays < 365 -> "Полгода назад"   // ~180-365 days
+                else -> "Давно"                     // > 365 days (1 year+)
+            }
+            
+            groups.getOrPut(timeLabel) { mutableListOf() }.add(memory)
+        }
+        
+        // Sort by time (newest to oldest)
+        val timeOrder = listOf(
+            // Days
+            "1 день назад",
+            "2 дня назад",
+            "3 дня назад",
+            "4 дня назад",
+            "5 дней назад",
+            "6 дней назад",
+            "7 дней назад",
+            // Weeks
+            "1 неделю назад",
+            "2 недели назад",
+            "3 недели назад",
+            // Months
+            "1 месяц назад",
+            "2 месяца назад",
+            "3 месяца назад",
+            "4 месяца назад",
+            "5 месяцев назад",
+            // Beyond
+            "Полгода назад",
+            "Давно"
+        )
+        
+        return groups.toSortedMap(compareBy { timeOrder.indexOf(it) })
     }
     
     private fun buildRequestLogs(
@@ -855,12 +991,127 @@ class ChatViewModel @Inject constructor(
         }
     }
     
+    /**
+     * Regenerate AI response for a given message
+     * Deletes the current assistant message and generates a new one
+     */
     fun regenerateMessage(messageId: String) {
         viewModelScope.launch {
-            // TODO: Implement regeneration
-            // 1. Get message
-            // 2. Delete it
-            // 3. Generate new response
+            try {
+                // Find the message to regenerate
+                val messageToRegenerate = _uiState.value.messages.find { it.id == messageId }
+                if (messageToRegenerate == null || messageToRegenerate.role != MessageRole.ASSISTANT) {
+                    Log.w("ChatViewModel", "Cannot regenerate: message not found or not an assistant message")
+                    return@launch
+                }
+                
+                // Find the corresponding user message (the one immediately before this assistant message)
+                val messageIndex = _uiState.value.messages.indexOfFirst { it.id == messageId }
+                val userMessage = if (messageIndex > 0) {
+                    _uiState.value.messages.getOrNull(messageIndex - 1)
+                } else {
+                    null
+                }
+                
+                if (userMessage == null || userMessage.role != MessageRole.USER) {
+                    Log.w("ChatViewModel", "Cannot regenerate: corresponding user message not found")
+                    return@launch
+                }
+                
+                // Delete both user and assistant messages
+                messageRepository.deleteMessage(userMessage.id)
+                messageRepository.deleteMessage(messageToRegenerate.id)
+                
+                // Set the user message content back to input and trigger send
+                _uiState.update { it.copy(inputText = userMessage.content) }
+                
+                // Wait a bit for UI to update, then send
+                kotlinx.coroutines.delay(100)
+                sendMessage()
+                
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error regenerating message", e)
+            }
+        }
+    }
+    
+    /**
+     * Retry after error: delete user message and re-send it
+     */
+    fun retryAfterError() {
+        viewModelScope.launch {
+            try {
+                val errorDetails = _uiState.value.errorDetails ?: return@launch
+                
+                // Hide error dialog
+                hideErrorDialog()
+                
+                // Set user message content to input
+                _uiState.update { it.copy(inputText = errorDetails.userMessageContent) }
+                
+                // Delete user message from DB
+                messageRepository.deleteMessage(errorDetails.userMessageId)
+                
+                // Delete assistant message only if it was created
+                if (errorDetails.assistantMessageId.isNotEmpty()) {
+                    messageRepository.deleteMessage(errorDetails.assistantMessageId)
+                }
+                
+                // Wait a bit, then resend
+                kotlinx.coroutines.delay(100)
+                sendMessage()
+                
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error retrying after error", e)
+            }
+        }
+    }
+    
+    /**
+     * Cancel after error: copy user message to clipboard and delete the pair
+     */
+    fun cancelAfterError(clipboardManager: androidx.compose.ui.platform.ClipboardManager) {
+        viewModelScope.launch {
+            try {
+                val errorDetails = _uiState.value.errorDetails ?: return@launch
+                
+                // Copy user message to clipboard
+                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(errorDetails.userMessageContent))
+                
+                // Delete user message from DB
+                messageRepository.deleteMessage(errorDetails.userMessageId)
+                
+                // Delete assistant message only if it was created
+                if (errorDetails.assistantMessageId.isNotEmpty()) {
+                    messageRepository.deleteMessage(errorDetails.assistantMessageId)
+                }
+                
+                // Hide error dialog
+                hideErrorDialog()
+                
+                Log.i("ChatViewModel", "User message copied to clipboard and messages deleted")
+                
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error canceling after error", e)
+            }
+        }
+    }
+    
+    fun hideErrorDialog() {
+        _uiState.update { 
+            it.copy(
+                showErrorDialog = false,
+                errorDetails = null
+            )
+        }
+    }
+    
+    fun hideModelLoadErrorDialog() {
+        _uiState.update {
+            it.copy(
+                showModelLoadErrorDialog = false,
+                modelLoadErrorMessage = null
+            )
         }
     }
     
@@ -1000,32 +1251,60 @@ class ChatViewModel @Inject constructor(
     }
     
     // Export chat functionality
-    fun exportChat() {
+    fun exportChat(filterByLikes: Boolean = false) {
         val conversation = _uiState.value.currentConversation
-        val messages = _uiState.value.messages
+        val allMessages = _uiState.value.messages
         
-        if (conversation == null || messages.isEmpty()) return
+        if (conversation == null || allMessages.isEmpty()) return
+        
+        // Filter messages by likes if requested
+        val messages = if (filterByLikes) {
+            allMessages.filter { it.isLiked }
+        } else {
+            allMessages
+        }
+        
+        if (messages.isEmpty() && filterByLikes) {
+            // Show empty state if no liked messages
+            _uiState.update { 
+                it.copy(
+                    showExportDialog = true,
+                    exportedChatText = "No liked messages to export.\n\nTip: Like messages by clicking the ❤️ icon in the message menu."
+                ) 
+            }
+            return
+        }
         
         val exportBuilder = StringBuilder()
-        exportBuilder.appendLine("Chat Export: ${conversation.title}")
-        exportBuilder.appendLine("Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
-        exportBuilder.appendLine("Model: ${conversation.model} (${conversation.provider})")
-        exportBuilder.appendLine("=" .repeat(50))
+        exportBuilder.appendLine("# Chat Export: ${conversation.title}")
+        exportBuilder.appendLine()
+        exportBuilder.appendLine("**Date:** ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
+        exportBuilder.appendLine("**Model:** ${conversation.model} (${conversation.provider})")
+        if (filterByLikes) {
+            exportBuilder.appendLine("**Filter:** ❤️ Liked messages only (${messages.size} messages)")
+        } else {
+            exportBuilder.appendLine("**Total messages:** ${messages.size}")
+        }
+        exportBuilder.appendLine()
+        exportBuilder.appendLine("---")
         exportBuilder.appendLine()
         
         messages.forEach { message ->
             val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                 .format(java.util.Date(message.createdAt))
             val role = when (message.role) {
-                MessageRole.USER -> "👤 User"
-                MessageRole.ASSISTANT -> "🤖 Assistant"
-                MessageRole.SYSTEM -> "⚙️ System"
+                MessageRole.USER -> "## 👤 User"
+                MessageRole.ASSISTANT -> "## 🤖 Assistant"
+                MessageRole.SYSTEM -> "## ⚙️ System"
             }
+            val likeIndicator = if (message.isLiked) " ❤️" else ""
             
-            exportBuilder.appendLine("[$timestamp] $role:")
+            exportBuilder.appendLine("$role$likeIndicator")
+            exportBuilder.appendLine("*$timestamp*")
+            exportBuilder.appendLine()
             exportBuilder.appendLine(message.content)
             exportBuilder.appendLine()
-            exportBuilder.appendLine("-".repeat(50))
+            exportBuilder.appendLine("---")
             exportBuilder.appendLine()
         }
         

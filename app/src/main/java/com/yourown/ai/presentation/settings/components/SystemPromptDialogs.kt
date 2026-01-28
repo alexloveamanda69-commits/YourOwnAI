@@ -48,7 +48,7 @@ fun SystemPromptsListDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${if (promptType == PromptType.API) "API" else "Local"} Промпты",
+                        text = "${if (promptType == PromptType.API) "API" else "Local"} Prompts",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -86,14 +86,14 @@ fun SystemPromptsListDialog(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
                             Text(
-                                text = "Нет промптов",
+                                text = "No prompts",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             OutlinedButton(onClick = onAddNew) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Добавить промпт")
+                                Text("Add prompt")
                             }
                         }
                     }
@@ -164,7 +164,7 @@ private fun PromptListItem(
                             shape = MaterialTheme.shapes.extraSmall
                         ) {
                             Text(
-                                text = "По умолчанию",
+                                text = "Default",
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onPrimary
@@ -222,7 +222,7 @@ private fun PromptListItem(
             )
             
             Text(
-                text = "Использований: ${prompt.usageCount}",
+                text = "Used: ${prompt.usageCount} times",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -233,8 +233,8 @@ private fun PromptListItem(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Удалить промпт?") },
-            text = { Text("Это действие нельзя отменить.") },
+            title = { Text("Delete prompt?") },
+            text = { Text("This action cannot be undone.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -245,12 +245,12 @@ private fun PromptListItem(
                         containerColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text("Удалить")
+                    Text("Delete")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Отмена")
+                    Text("Cancel")
                 }
             }
         )
@@ -271,6 +271,14 @@ fun EditPromptDialog(
     var name by remember { mutableStateOf(prompt?.name ?: "") }
     var content by remember { mutableStateOf(prompt?.content ?: "") }
     var isDefault by remember { mutableStateOf(prompt?.isDefault ?: false) }
+    
+    // Get original default prompt value for reset functionality
+    val originalDefaultPrompt = remember(promptType) {
+        when (promptType) {
+            PromptType.API -> com.yourown.ai.domain.model.AIConfig.DEFAULT_SYSTEM_PROMPT
+            PromptType.LOCAL -> com.yourown.ai.domain.model.AIConfig.DEFAULT_LOCAL_SYSTEM_PROMPT
+        }
+    }
     
     // Найти дефолтный промпт для этого типа и взять первые 100 символов
     val defaultPromptPreview = remember(allPrompts, promptType) {
@@ -307,7 +315,7 @@ fun EditPromptDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (prompt == null) "Новый промпт" else "Редактировать",
+                        text = if (prompt == null) "New Persona" else "Edit Persona",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -325,7 +333,7 @@ fun EditPromptDialog(
                     value = name,
                     onValueChange = { name = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Название") },
+                    label = { Text("Name") },
                     placeholder = { Text("System 1") },
                     singleLine = true
                 )
@@ -337,7 +345,7 @@ fun EditPromptDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    label = { Text("Содержимое промпта") },
+                    label = { Text("Prompt Content") },
                     placeholder = { Text(defaultPromptPreview) },
                     minLines = 10
                 )
@@ -352,7 +360,7 @@ fun EditPromptDialog(
                         onCheckedChange = { isDefault = it }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Использовать по умолчанию")
+                    Text("Use as default")
                 }
                 
                 // Buttons
@@ -360,11 +368,30 @@ fun EditPromptDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Отмена")
+                    // Show "Reset to default" for default prompts, "Cancel" for others
+                    if (prompt?.isDefault == true) {
+                        OutlinedButton(
+                            onClick = { 
+                                // Reset content to original default
+                                content = originalDefaultPrompt
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Reset to default")
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Cancel")
+                        }
                     }
                     
                     Button(
@@ -374,7 +401,7 @@ fun EditPromptDialog(
                         modifier = Modifier.weight(1f),
                         enabled = name.isNotBlank() && content.isNotBlank()
                     ) {
-                        Text("Сохранить")
+                        Text("Save")
                     }
                 }
             }

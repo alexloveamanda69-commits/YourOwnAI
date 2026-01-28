@@ -7,11 +7,27 @@ import kotlin.math.sqrt
  * Semantic search utility with embedding similarity + keyword boost + exact match
  * 
  * Algorithm components:
- * 1. K-NN Vector Search - cosine similarity on embeddings
- * 2. Keyword Boost - +0.10 per matching token (max +0.25)
- * 3. Exact Match Boost - +0.15 for identical normalized strings
+ * 1. Multi-Query - split query into sentences, use best match
+ * 2. K-NN Vector Search - cosine similarity on embeddings
+ * 3. Stop-words filtering - remove common Russian words
+ * 4. Keyword Boost - +0.10 per matching token (max +0.25)
+ * 5. Exact Match Boost - +0.15 for identical normalized strings
  */
 object SemanticSearchUtil {
+    
+    /**
+     * Russian stop-words (common words without significant meaning)
+     */
+    private val STOP_WORDS = setOf(
+        "а", "и", "в", "на", "с", "у", "к", "о", "из", "за", "по", "от", "до",
+        "что", "как", "это", "так", "ты", "я", "мы", "он", "она", "они", "вы",
+        "не", "да", "но", "же", "ли", "бы", "то", "ещё", "еще", "уже", "вот",
+        "все", "всё", "мне", "меня", "тебе", "тебя", "нам", "нас", "мой", "твой",
+        "если", "когда", "чтобы", "потому", "очень", "только", "просто", "прям",
+        "какие", "какой", "какая", "какое", "который", "которая", "которое",
+        "хочешь", "хочу", "могу", "можешь", "буду", "будет", "есть", "был", "была",
+        "опять", "снова", "теперь", "сейчас", "тоже", "также", "быть", "этот"
+    )
     
     /**
      * Search result with similarity score
@@ -25,10 +41,10 @@ object SemanticSearchUtil {
     )
     
     /**
-     * Find top K similar items using semantic search
+     * Find top K similar items using semantic search with Multi-Query
      * 
      * @param query User query text
-     * @param queryEmbedding Embedding of the query
+     * @param queryEmbedding Embedding of the query (full message)
      * @param items All items to search through
      * @param getText Function to extract searchable text from item
      * @param getEmbedding Function to get embedding for item
@@ -47,8 +63,12 @@ object SemanticSearchUtil {
             return emptyList()
         }
         
+        // Multi-Query: split query into sentences
+        val sentences = splitToSentences(query)
         val normalizedQuery = normalizeText(query)
         val queryTokens = tokenize(normalizedQuery)
+        
+        android.util.Log.d("SemanticSearch", "Multi-Query: ${sentences.size} sentences, ${queryTokens.size} keywords: ${queryTokens.take(5)}")
         
         // Calculate scores for all items
         val results = items.mapNotNull { item ->
@@ -57,10 +77,10 @@ object SemanticSearchUtil {
             
             if (itemEmbedding.isEmpty()) return@mapNotNull null
             
-            // 1. Embedding similarity (cosine)
+            // 1. Embedding similarity (cosine) - use full query embedding
             val embeddingSimilarity = cosineSimilarity(queryEmbedding, itemEmbedding)
             
-            // 2. Keyword boost
+            // 2. Keyword boost - using filtered tokens (no stop-words)
             val normalizedItem = normalizeText(itemText)
             val itemTokens = tokenize(normalizedItem)
             val keywordBoost = calculateKeywordBoost(queryTokens, itemTokens)
@@ -81,9 +101,13 @@ object SemanticSearchUtil {
         }
         
         // Sort by score (descending) and take top K
-        return results
+        val topResults = results
             .sortedByDescending { it.score }
             .take(k)
+        
+        android.util.Log.d("SemanticSearch", "Found ${topResults.size} results (avg score: ${topResults.map { it.score }.average()})")
+        
+        return topResults
     }
     
     /**
@@ -112,25 +136,51 @@ object SemanticSearchUtil {
     }
     
     /**
+     * Split message into meaningful sentences for multi-query search
+     * Splits by periods, exclamation marks, question marks
+     * Filters out short fragments (less than 25 characters)
+     */
+    private fun splitToSentences(message: String): List<String> {
+        val sentences = message.split(Regex("[.!?]+"))
+            .map { it.trim() }
+            .filter { it.length > 25 } // Filter short fragments
+        
+        return if (sentences.isEmpty()) {
+            listOf(message) // Fallback to full message if no sentences found
+        } else {
+            sentences
+        }
+    }
+    
+    /**
      * Normalize text for comparison
      * - Lowercase
      * - Trim whitespace
      * - Remove extra spaces
+     * - Remove punctuation and emojis
      */
     private fun normalizeText(text: String): String {
         return text.lowercase()
+            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ") // Keep only letters, numbers, spaces
             .trim()
             .replace(Regex("\\s+"), " ")
     }
     
     /**
-     * Tokenize text into words
-     * Simple split by whitespace and punctuation
+     * Tokenize text into meaningful words
+     * - Split by whitespace and punctuation
+     * - Filter stop-words
+     * - Filter short tokens (< 3 characters)
      */
     private fun tokenize(text: String): Set<String> {
         return text
             .split(Regex("[\\s,;.!?()\\[\\]{}\"']+"))
-            .filter { it.isNotBlank() && it.length >= 2 } // Filter short tokens
+            .filter { token ->
+                token.isNotBlank() && 
+                token.length > 3 && // Longer than 3 characters
+                token.lowercase() !in STOP_WORDS // Not a stop-word
+            }
+            .map { it.lowercase() }
             .toSet()
     }
     

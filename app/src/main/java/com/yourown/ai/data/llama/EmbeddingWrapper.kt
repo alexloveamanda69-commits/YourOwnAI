@@ -122,10 +122,20 @@ class EmbeddingWrapper(private val context: Context) {
         }
         
         return try {
-            Log.d(TAG, "Generating embedding for text: ${text.take(50)}...")
+            // Truncate text to max 512 characters to avoid model token limit
+            // Most embedding models support up to 512 tokens (~400-500 chars)
+            val maxChars = 512
+            val truncatedText = if (text.length > maxChars) {
+                Log.w(TAG, "Text too long (${text.length} chars), truncating to $maxChars chars")
+                text.take(maxChars)
+            } else {
+                text
+            }
+            
+            Log.d(TAG, "Generating embedding for text (${truncatedText.length} chars): ${truncatedText.take(50)}...")
             
             // Use Llamatik's embed() function
-            val embedding = LlamaBridge.embed(text)
+            val embedding = LlamaBridge.embed(truncatedText)
             
             // Verify dimensions match expected size
             if (embedding.size != embeddingDimensions) {

@@ -326,4 +326,59 @@ class DocumentEmbeddingRepository @Inject constructor(
     fun resetStatus() {
         _processingStatus.value = DocumentProcessingStatus.Idle
     }
+    
+    /**
+     * Recalculate embeddings for all RAG chunks
+     * Use this when switching embedding models
+     * @param onProgress callback with (current, total, percentage) progress
+     */
+    suspend fun recalculateAllEmbeddings(
+        onProgress: (current: Int, total: Int, percentage: Float) -> Unit = { _, _, _ -> }
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            // Get all chunks
+            val allChunks = documentChunkDao.getAllChunks()
+            if (allChunks.isEmpty()) {
+                Log.i(TAG, "No RAG chunks to recalculate")
+                return@withContext Result.success(0)
+            }
+            
+            Log.i(TAG, "Starting RAG embedding recalculation for ${allChunks.size} chunks")
+            
+            var processedCount = 0
+            val totalChunks = allChunks.size
+            
+            // Process each chunk with progress tracking
+            allChunks.forEachIndexed { index, chunk ->
+                // Generate new embedding
+                val embeddingResult = embeddingService.generateEmbedding(chunk.content)
+                
+                if (embeddingResult.isSuccess) {
+                    val embedding = embeddingResult.getOrNull()
+                    if (embedding != null) {
+                        // Convert embedding to JSON string
+                        val embeddingJson = gson.toJson(embedding.toList())
+                        
+                        // Update chunk with new embedding (using insert with REPLACE strategy)
+                        documentChunkDao.insertChunk(
+                            chunk.copy(embedding = embeddingJson)
+                        )
+                        processedCount++
+                    }
+                } else {
+                    Log.w(TAG, "Failed to generate embedding for chunk ${chunk.id}")
+                }
+                
+                // Update progress after each chunk
+                val percentage = if (totalChunks > 0) (index + 1).toFloat() / totalChunks else 0f
+                onProgress(index + 1, totalChunks, percentage)
+            }
+            
+            Log.i(TAG, "Completed RAG embedding recalculation: $processedCount chunks")
+            Result.success(processedCount)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error recalculating RAG embeddings", e)
+            Result.failure(e)
+        }
+    }
 }

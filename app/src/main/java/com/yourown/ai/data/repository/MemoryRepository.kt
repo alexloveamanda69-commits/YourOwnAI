@@ -71,17 +71,35 @@ class MemoryRepository @Inject constructor(
     }
     
     /**
-     * Insert new memory
+     * Insert new memory with pre-computed embedding
      */
     suspend fun insertMemory(memory: MemoryEntry) {
-        memoryDao.insertMemory(memory.toEntity())
+        // Generate embedding for the memory fact
+        val embeddingResult = embeddingService.generateEmbedding(memory.fact)
+        val embeddingString = if (embeddingResult.isSuccess) {
+            embeddingResult.getOrNull()?.joinToString(",")
+        } else {
+            null
+        }
+        
+        // Save memory with embedding
+        memoryDao.insertMemory(memory.toEntity(embedding = embeddingString))
     }
     
     /**
-     * Update existing memory
+     * Update existing memory and recalculate embedding
      */
     suspend fun updateMemory(memory: MemoryEntry) {
-        memoryDao.updateMemory(memory.toEntity())
+        // Regenerate embedding for updated fact
+        val embeddingResult = embeddingService.generateEmbedding(memory.fact)
+        val embeddingString = if (embeddingResult.isSuccess) {
+            embeddingResult.getOrNull()?.joinToString(",")
+        } else {
+            null
+        }
+        
+        // Update memory with new embedding
+        memoryDao.updateMemory(memory.toEntity(embedding = embeddingString))
     }
     
     /**
@@ -114,29 +132,31 @@ class MemoryRepository @Inject constructor(
     
     /**
      * Find similar memories using semantic search (embedding + keyword matching)
+     * Now uses pre-computed embeddings for better performance
      * 
      * @param query User's current message
      * @param limit Maximum number of memories to return (default 5)
+     * @param minAgeDays Minimum age in days for memories to be retrieved
      * @return List of most relevant memories
      */
     suspend fun findSimilarMemories(query: String, limit: Int = 5, minAgeDays: Int = 0): List<MemoryEntry> {
         try {
-            // Get all memories
-            val allMemories = getAllMemories().first()
-            if (allMemories.isEmpty()) return emptyList()
+            // Get all memory entities (with embeddings)
+            val allMemoryEntities = memoryDao.getAllMemories().first()
+            if (allMemoryEntities.isEmpty()) return emptyList()
             
             // Filter memories by age (only retrieve memories older than minAgeDays)
             val currentTimeMillis = System.currentTimeMillis()
             val minAgeMillis = minAgeDays * 24 * 60 * 60 * 1000L
-            val filteredMemories = if (minAgeDays > 0) {
-                allMemories.filter { memory ->
-                    (currentTimeMillis - memory.createdAt) >= minAgeMillis
+            val filteredEntities = if (minAgeDays > 0) {
+                allMemoryEntities.filter { entity ->
+                    (currentTimeMillis - entity.createdAt) >= minAgeMillis
                 }
             } else {
-                allMemories
+                allMemoryEntities
             }
             
-            if (filteredMemories.isEmpty()) return emptyList()
+            if (filteredEntities.isEmpty()) return emptyList()
             
             // Generate embedding for query
             val queryEmbeddingResult = embeddingService.generateEmbedding(query)
@@ -146,12 +166,23 @@ class MemoryRepository @Inject constructor(
             }
             val queryEmbedding = queryEmbeddingResult.getOrNull() ?: return emptyList()
             
-            // For memories, we'll generate embeddings on-the-fly since they're not stored
-            // In production, you'd want to store embeddings in the database
-            val memoriesWithEmbeddings = filteredMemories.mapNotNull { memory ->
-                val memoryEmbeddingResult = embeddingService.generateEmbedding(memory.fact)
-                if (memoryEmbeddingResult.isSuccess) {
-                    memory to memoryEmbeddingResult.getOrNull()
+            // Use pre-computed embeddings from database
+            val memoriesWithEmbeddings = filteredEntities.mapNotNull { entity ->
+                val embedding = entity.embedding?.let { embStr ->
+                    embStr.split(",").mapNotNull { it.toFloatOrNull() }.toFloatArray()
+                }
+                
+                // If embedding is missing, generate it (fallback)
+                val finalEmbedding = if (embedding == null) {
+                    android.util.Log.w("MemoryRepository", "Missing embedding for memory ${entity.id}, generating...")
+                    val result = embeddingService.generateEmbedding(entity.fact)
+                    result.getOrNull()
+                } else {
+                    embedding
+                }
+                
+                if (finalEmbedding != null) {
+                    entity.toDomain() to finalEmbedding
                 } else {
                     null
                 }
@@ -173,6 +204,42 @@ class MemoryRepository @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.e("MemoryRepository", "Error finding similar memories", e)
             return emptyList()
+        }
+    }
+    
+    /**
+     * Recalculate embeddings for all memories
+     * Use this when switching embedding models
+     * @param onProgress callback with (current, total, percentage) progress
+     */
+    suspend fun recalculateAllEmbeddings(
+        onProgress: (current: Int, total: Int, percentage: Float) -> Unit = { _, _, _ -> }
+    ): Result<Int> {
+        return try {
+            val allEntities = memoryDao.getAllMemories().first()
+            val totalCount = allEntities.size
+            var processedCount = 0
+            
+            allEntities.forEachIndexed { index, entity ->
+                val embeddingResult = embeddingService.generateEmbedding(entity.fact)
+                if (embeddingResult.isSuccess) {
+                    val embeddingString = embeddingResult.getOrNull()?.joinToString(",")
+                    memoryDao.updateMemory(
+                        entity.copy(embedding = embeddingString)
+                    )
+                    processedCount++
+                }
+                
+                // Update progress
+                val percentage = if (totalCount > 0) (index + 1).toFloat() / totalCount else 0f
+                onProgress(index + 1, totalCount, percentage)
+            }
+            
+            android.util.Log.i("MemoryRepository", "Recalculated embeddings for $processedCount memories")
+            Result.success(processedCount)
+        } catch (e: Exception) {
+            android.util.Log.e("MemoryRepository", "Error recalculating memory embeddings", e)
+            Result.failure(e)
         }
     }
 }

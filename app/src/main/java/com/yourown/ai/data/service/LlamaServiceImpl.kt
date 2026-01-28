@@ -146,9 +146,14 @@ class LlamaServiceImpl @Inject constructor(
                 
                 Log.d(TAG, "Full response received, length: ${fullResponse.length}")
                 
+                // Clean response: stop at first sign of continuation/looping
+                val cleanedResponse = cleanLocalModelResponse(fullResponse)
+                
+                Log.d(TAG, "Cleaned response length: ${cleanedResponse.length}")
+                
                 // Simulate streaming by emitting words with small delays
                 // This gives a nice UX while avoiding the native UTF-8 bug
-                val words = fullResponse.split(" ")
+                val words = cleanedResponse.split(" ")
                 for ((index, word) in words.withIndex()) {
                     if (!isGenerating) break
                     
@@ -177,6 +182,77 @@ class LlamaServiceImpl @Inject constructor(
     }
     
     /**
+     * Clean local model response by stopping at first sign of looping or continuation
+     */
+    private fun cleanLocalModelResponse(response: String): String {
+        // List of stop markers that indicate model started looping or continuing dialogue
+        val stopMarkers = listOf(
+            "\n### User:",
+            "\n### Assistant:",
+            "\nUser:",
+            "\nAssistant:",
+            "\nA:",
+            "\nUser ",
+            "User: ",
+            "\n---",
+            "\nSystem:"
+        )
+        
+        var cleaned = response.trim()
+        
+        // Find earliest stop marker
+        var earliestIndex = cleaned.length
+        for (marker in stopMarkers) {
+            val index = cleaned.indexOf(marker, ignoreCase = true)
+            if (index > 0 && index < earliestIndex) {
+                earliestIndex = index
+            }
+        }
+        
+        // Cut at earliest stop marker
+        if (earliestIndex < cleaned.length) {
+            cleaned = cleaned.substring(0, earliestIndex).trim()
+            Log.d(TAG, "Response truncated at stop marker, new length: ${cleaned.length}")
+        }
+        
+        // Detect repetition: if same sentence appears 2+ times, cut after first occurrence
+        cleaned = removeRepeatedSentences(cleaned)
+        
+        return cleaned
+    }
+    
+    /**
+     * Remove repeated sentences from response (anti-looping protection)
+     */
+    private fun removeRepeatedSentences(text: String): String {
+        val sentences = text.split(Regex("[.!?]+\\s+"))
+        if (sentences.size <= 1) return text
+        
+        val seen = mutableSetOf<String>()
+        val result = mutableListOf<String>()
+        
+        for (sentence in sentences) {
+            val normalized = sentence.trim().lowercase()
+            if (normalized.length < 10) {
+                // Short sentences (like "Да", "Нет") are ok to repeat
+                result.add(sentence)
+                continue
+            }
+            
+            if (normalized in seen) {
+                // Found repetition, stop here
+                Log.d(TAG, "Detected repeated sentence, truncating response")
+                break
+            }
+            
+            seen.add(normalized)
+            result.add(sentence)
+        }
+        
+        return result.joinToString(". ").trim()
+    }
+    
+    /**
      * Build prompt from conversation history
      */
     private fun buildPrompt(
@@ -187,8 +263,8 @@ class LlamaServiceImpl @Inject constructor(
     ): String {
         val builder = StringBuilder()
         
-        // Add system prompt
-        builder.append("System: $systemPrompt\n\n")
+        // Add system prompt with explicit stop instruction
+        builder.append("$systemPrompt\n\n")
         
         // Add user context if provided
         if (!userContext.isNullOrBlank()) {
@@ -199,11 +275,11 @@ class LlamaServiceImpl @Inject constructor(
         // (they work best with single request-response pairs)
         val lastUserMessage = messages.lastOrNull { it.role == MessageRole.USER }
         if (lastUserMessage != null) {
-            builder.append("User: ${lastUserMessage.content}\n\n")
+            builder.append("### User:\n${lastUserMessage.content}\n\n")
         }
         
-        // Add prompt for assistant response
-        builder.append("Assistant:")
+        // Add prompt for assistant response with clear delimiter
+        builder.append("### Assistant:\n")
         
         return builder.toString()
     }

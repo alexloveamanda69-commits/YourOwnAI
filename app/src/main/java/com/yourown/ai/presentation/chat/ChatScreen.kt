@@ -37,9 +37,23 @@ fun ChatScreen(
     // Check if scrolled to bottom
     val isAtBottom by remember {
         derivedStateOf {
-            val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()
-            val lastIndex = uiState.messages.size - 1
-            lastVisibleItem?.index == lastIndex || uiState.messages.isEmpty()
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
+            
+            // Don't show button if list is empty
+            if (uiState.messages.isEmpty()) return@derivedStateOf true
+            
+            // Check if content actually needs scrolling (has items beyond visible area)
+            val totalItemsCount = layoutInfo.totalItemsCount
+            val visibleItemsCount = layoutInfo.visibleItemsInfo.size
+            val canScroll = totalItemsCount > visibleItemsCount
+            
+            // If can't scroll (all content fits on screen), consider at bottom
+            if (!canScroll) return@derivedStateOf true
+            
+            // Check if last item is fully visible
+            val lastItemIndex = totalItemsCount - 1
+            lastVisibleItem?.index == lastItemIndex
         }
     }
     
@@ -53,15 +67,27 @@ fun ChatScreen(
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
-            // Use scrollToItem (not animate) to avoid jitter during streaming
-            listState.scrollToItem(uiState.messages.size - 1)
+            // Scroll to last item (spacer) to ensure full visibility
+            // +1 for loading indicator (if present), +1 for bottom spacer
+            val targetIndex = if (uiState.isLoading) {
+                uiState.messages.size + 1 // messages + loading + spacer
+            } else {
+                uiState.messages.size // messages + spacer
+            }
+            listState.scrollToItem(targetIndex)
         }
     }
     
     // Auto-scroll after streaming completes
     LaunchedEffect(uiState.shouldScrollToBottom) {
         if (uiState.shouldScrollToBottom && uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+            // Scroll to last item (spacer)
+            val targetIndex = if (uiState.isLoading) {
+                uiState.messages.size + 1
+            } else {
+                uiState.messages.size
+            }
+            listState.animateScrollToItem(targetIndex)
             viewModel.onScrolledToBottom()
         }
     }
@@ -80,7 +106,13 @@ fun ChatScreen(
     fun scrollToBottom() {
         coroutineScope.launch {
             if (uiState.messages.isNotEmpty()) {
-                listState.animateScrollToItem(uiState.messages.size - 1)
+                // Scroll to last item (spacer) to ensure full visibility of last message
+                val targetIndex = if (uiState.isLoading) {
+                    uiState.messages.size + 1 // messages + loading + spacer
+                } else {
+                    uiState.messages.size // messages + spacer
+                }
+                listState.animateScrollToItem(targetIndex)
             }
         }
     }
@@ -158,6 +190,9 @@ fun ChatScreen(
                                     onCopy = {
                                         clipboardManager.setText(AnnotatedString(message.content))
                                     },
+                                    onReply = {
+                                        viewModel.setReplyToMessage(message)
+                                    },
                                     onDelete = {
                                         viewModel.deleteMessage(message.id)
                                     },
@@ -187,6 +222,11 @@ fun ChatScreen(
                                     }
                                 }
                             }
+                            
+                            // Bottom spacer to ensure last message is fully visible
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                         }
                         
                         // Scroll to bottom button - inside Box, not Column
@@ -212,6 +252,23 @@ fun ChatScreen(
                             }
                         }
                     }
+                }
+                
+                // Reply preview (if swiped message exists)
+                if (uiState.replyToMessage != null) {
+                    ReplyPreview(
+                        replyToMessage = uiState.replyToMessage!!,
+                        onClearReply = viewModel::clearReplyToMessage,
+                        onClickReply = {
+                            // Scroll to the replied message
+                            val messageIndex = uiState.messages.indexOfFirst { it.id == uiState.replyToMessage?.id }
+                            if (messageIndex >= 0) {
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(messageIndex)
+                                }
+                            }
+                        }
+                    )
                 }
                 
                 // Input - внизу, внутри imePadding колонки
@@ -264,6 +321,52 @@ fun ChatScreen(
                     type = "text/plain"
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Поделиться чатом"))
+            },
+            onFilterChanged = { filterByLikes ->
+                viewModel.exportChat(filterByLikes = filterByLikes)
+            }
+        )
+    }
+    
+    if (uiState.showErrorDialog && uiState.errorDetails != null) {
+        val clipboardManager = LocalClipboardManager.current
+        ErrorDialog(
+            errorMessage = uiState.errorDetails!!.errorMessage,
+            userMessageContent = uiState.errorDetails!!.userMessageContent,
+            modelName = uiState.errorDetails!!.modelName,
+            onRetry = viewModel::retryAfterError,
+            onCancel = { viewModel.cancelAfterError(clipboardManager) }
+        )
+    }
+    
+    // Model load error dialog (simple info dialog)
+    if (uiState.showModelLoadErrorDialog && uiState.modelLoadErrorMessage != null) {
+        AlertDialog(
+            onDismissRequest = viewModel::hideModelLoadErrorDialog,
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text("Model Loading Error")
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(uiState.modelLoadErrorMessage!!)
+                    Text(
+                        text = "Please download the model from the model selector before using it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::hideModelLoadErrorDialog) {
+                    Text("OK")
+                }
             }
         )
     }

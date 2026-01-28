@@ -39,6 +39,7 @@ fun MessageBubble(
     onViewLogs: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
+    onReply: () -> Unit = {},
     modifier: Modifier = Modifier,
     searchQuery: String = ""
 ) {
@@ -69,6 +70,45 @@ fun MessageBubble(
                 Column(
                     modifier = Modifier.padding(12.dp)
                 ) {
+                    // Swipe message preview (if this message is a reply)
+                    if (message.swipeMessageId != null && message.swipeMessageText != null) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(3.dp)
+                                        .height(40.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.primary,
+                                            RoundedCornerShape(2.dp)
+                                        )
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Replied to:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = message.swipeMessageText!!,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    
                     if (message.isError) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -142,6 +182,19 @@ fun MessageBubble(
                     Icon(
                         Icons.Default.ContentCopy,
                         contentDescription = "Copy",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                // Reply button - for both user and assistant
+                IconButton(
+                    onClick = onReply,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Reply,
+                        contentDescription = "Reply",
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )

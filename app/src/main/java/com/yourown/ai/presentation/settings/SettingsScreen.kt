@@ -80,7 +80,11 @@ fun SettingsScreen(
             
             // Embedding Models Section
             EmbeddingModelsSection(
-                onShowEmbeddingModels = viewModel::showEmbeddingModelsDialog
+                onShowEmbeddingModels = viewModel::showEmbeddingModelsDialog,
+                onRecalculateEmbeddings = viewModel::recalculateAllEmbeddings,
+                isRecalculating = uiState.isRecalculatingEmbeddings,
+                recalculationProgress = uiState.recalculationProgress,
+                recalculationProgressPercent = uiState.recalculationProgressPercent
             )
             
             // Knowledge & Memory Section
@@ -100,9 +104,6 @@ fun SettingsScreen(
             AppearanceSection(
                 onShowAppearance = viewModel::showAppearanceDialog
             )
-            
-            // Account & Sync Section
-            AccountSyncSection()
             
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -256,6 +257,15 @@ fun SettingsScreen(
             onDismiss = viewModel::hideContextInstructionsDialog,
             onSave = viewModel::updateContextInstructions,
             onReset = viewModel::resetContextInstructions
+        )
+    }
+    
+    if (uiState.showSwipeMessagePromptDialog) {
+        com.yourown.ai.presentation.settings.components.SwipeMessagePromptDialog(
+            currentPrompt = uiState.aiConfig.swipeMessagePrompt,
+            onDismiss = viewModel::hideSwipeMessagePromptDialog,
+            onSave = viewModel::updateSwipeMessagePrompt,
+            onReset = viewModel::resetSwipeMessagePrompt
         )
     }
     
@@ -755,6 +765,15 @@ private fun KnowledgeMemorySection(
                     Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
                 }
             )
+            
+            SettingItemClickable(
+                title = "Swipe Message Prompt",
+                subtitle = "Prompt for replied messages",
+                onClick = { viewModel.showSwipeMessagePromptDialog() },
+                trailing = {
+                    Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
+                }
+            )
         }
         
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
@@ -957,13 +976,18 @@ private fun KnowledgeMemorySection(
 
 @Composable
 private fun EmbeddingModelsSection(
-    onShowEmbeddingModels: () -> Unit
+    onShowEmbeddingModels: () -> Unit,
+    onRecalculateEmbeddings: () -> Unit,
+    isRecalculating: Boolean,
+    recalculationProgress: String?,
+    recalculationProgressPercent: Float
 ) {
     SettingsSection(
         title = "Embedding Models",
         icon = Icons.Default.Memory,
         subtitle = "Models for semantic search and RAG"
     ) {
+        // Download Embedding Model button
         FilledTonalButton(
             onClick = onShowEmbeddingModels,
             modifier = Modifier.fillMaxWidth()
@@ -972,6 +996,84 @@ private fun EmbeddingModelsSection(
             Spacer(modifier = Modifier.width(8.dp))
             Text("Download Embedding Model")
         }
+        
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        // Recalculate All Embeddings button
+        OutlinedButton(
+            onClick = onRecalculateEmbeddings,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !isRecalculating
+        ) {
+            if (isRecalculating) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Recalculate All Embeddings")
+        }
+        
+        // Show progress bar and text
+        if (isRecalculating || recalculationProgress != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Progress bar
+            if (isRecalculating) {
+                LinearProgressIndicator(
+                    progress = { recalculationProgressPercent },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Progress percentage
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = recalculationProgress ?: "Processing...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Text(
+                        text = "${(recalculationProgressPercent * 100).toInt()}%",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            } else if (recalculationProgress != null) {
+                // Completion or error message
+                Text(
+                    text = recalculationProgress,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (recalculationProgress.startsWith("✅")) {
+                        MaterialTheme.colorScheme.primary
+                    } else if (recalculationProgress.startsWith("❌")) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+        
+        // Warning text
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "⚠️ Important: Recalculate all embeddings after switching embedding models",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -992,102 +1094,6 @@ private fun AppearanceSection(
                 Icon(Icons.Default.ChevronRight, "Customize")
             }
         )
-    }
-}
-
-@Composable
-private fun AccountSyncSection() {
-    SettingsSection(
-        title = "Account & Sync",
-        icon = Icons.Default.CloudSync,
-        subtitle = "Backup and synchronization"
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(
-                Icons.Default.PhoneAndroid,
-                null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "Your data is stored locally",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        Text(
-            text = "Want to sync across devices?",
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium
-        )
-        
-        Spacer(modifier = Modifier.height(12.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedButton(
-                onClick = { /* TODO: Skip */ },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Skip")
-            }
-            
-            Button(
-                onClick = { /* TODO: Sign in with Google */ },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Sign in with Google")
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "Why sign in?",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-                BulletPoint("Backup your chats")
-                BulletPoint("Sync across devices")
-                BulletPoint("Access from anywhere")
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Warning,
-                        null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Without sign in: data stays on this device only",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -1266,25 +1272,6 @@ private fun ToggleSetting(
                 Icon(Icons.Default.HelpOutline, "Help", modifier = Modifier.size(20.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun BulletPoint(text: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "•",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
