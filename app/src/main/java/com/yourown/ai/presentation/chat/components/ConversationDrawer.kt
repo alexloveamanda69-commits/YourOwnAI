@@ -27,6 +27,7 @@ fun ConversationDrawer(
     currentConversationId: String?,
     onConversationClick: (String) -> Unit,
     onNewConversation: () -> Unit,
+    onVoiceChatClick: () -> Unit = {},
     onDeleteConversation: (String) -> Unit
 ) {
     Column(
@@ -60,6 +61,19 @@ fun ConversationDrawer(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("New Chat")
+                }
+                
+                OutlinedButton(
+                    onClick = onVoiceChatClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Default.Mic,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Voice Chat")
                 }
             }
         }

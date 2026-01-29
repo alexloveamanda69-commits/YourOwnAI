@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.yourown.ai.data.remote.deepseek.DeepseekClient
 import com.yourown.ai.data.remote.openai.OpenAIClient
 import com.yourown.ai.data.remote.xai.XAIClient
+import com.yourown.ai.data.remote.xai.XAIVoiceClient
 import com.yourown.ai.data.repository.LocalModelRepository
 import dagger.Module
 import dagger.Provides
@@ -103,5 +104,14 @@ object NetworkModule {
         gson: Gson
     ): XAIClient {
         return XAIClient(okHttpClient, gson)
+    }
+    
+    @Provides
+    @Singleton
+    fun provideXAIVoiceClient(
+        @ApiClient okHttpClient: OkHttpClient,
+        gson: Gson
+    ): XAIVoiceClient {
+        return XAIVoiceClient(okHttpClient, gson)
     }
 }

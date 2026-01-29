@@ -160,6 +160,17 @@ The app should feel like a **tool**, not a product with personality. It's your s
 - **Conversation titles** - auto-generated or manual edit
 - **Context-aware responses** - AI uses Memory, RAG, Deep Empathy, and Swipe context (API models only)
 
+#### 🎙️ Voice Chat (NEW!)
+- **Real-time voice conversation** - talk naturally with Grok AI
+- **5 voice options** - Ara (female, warm), Rex (male, confident), Sal (neutral, smooth), Eve (female, energetic), Leo (male, authoritative)
+- **System prompt selection** - choose personality from your saved prompts
+- **User context support** - voice chat uses your Context from Settings
+- **Audio visualization** - real-time waveform when speaking/listening
+- **Tap-to-talk** - simple microphone button (tap to start, tap to stop)
+- **Session-based** - messages stored in memory during session only
+- **Request logs** - view full voice session details (prompt, voice, context)
+- **xAI Grok Voice Agent API** - powered by grok-beta with 24kHz PCM16 audio
+
 #### 🤖 AI Providers & Models
 - **Deepseek** - deepseek-chat, deepseek-reasoner
 - **OpenAI** - GPT-5 series, GPT-4o, o1/o3 reasoning models
@@ -226,10 +237,10 @@ The app should feel like a **tool**, not a product with personality. It's your s
 
 #### 🧠 Additional AI Features
 - **Message alternatives** - regenerate or swipe for different responses
-- **Voice chat** - Speech-to-text and text-to-speech
 - **PDF document support** - extract text from PDFs for RAG
 - **Multi-modal** - image input for vision models
 - **Google account sync** - backup conversations and settings
+- **Voice chat history** - save and continue voice conversations
 
 #### 🔒 Security Enhancements
 - Biometric authentication option
@@ -256,6 +267,7 @@ The app should feel like a **tool**, not a product with personality. It's your s
 - **Semantic Search:** Cosine similarity + keyword boost + exact match boost
 - **API Clients:** OkHttp + Retrofit + Gson
 - **Streaming:** Server-Sent Events (SSE) for real-time responses
+- **Voice:** WebSocket (xAI Grok Voice Agent API) + AudioRecord + AudioTrack
 - **Security:** Certificate Pinning, Network Security Config, API key encryption
 - **Build:** Gradle 8.11+ with R8/ProGuard obfuscation
 
@@ -333,7 +345,11 @@ keytool -genkey -v -keystore yourownnai-release.keystore \
    - Models download one at a time with progress tracking
    - Models are validated automatically (GGUF header check)
 
-4. **Start chatting!**
+4. **For Voice Chat** (optional)
+   - Grant microphone permission when prompted
+   - Required for speech-to-text input
+
+5. **Start chatting!**
    - Select a model from the dropdown
    - Customize settings (temperature, system prompt, etc.)
    - View detailed request logs for debugging
@@ -368,6 +384,30 @@ keytool -genkey -v -keystore yourownnai-release.keystore \
   - **API models** - Deepseek, OpenAI GPT-5/4o, x.ai Grok
   - **Local models** - Qwen 2.5 1.7B, Llama 3.2 3B (if downloaded)
 - Model persists per conversation
+
+### Voice Chat
+1. **Open Voice Chat** - tap microphone button on home screen
+2. **First time setup**:
+   - Grant microphone permission
+   - Ensure x.ai API key is set (Settings → API Keys)
+3. **Choose voice** - tap center chip to select from 5 voices:
+   - **Ara** - Female, warm and friendly
+   - **Rex** - Male, confident and clear
+   - **Sal** - Neutral, smooth and balanced
+   - **Eve** - Female, energetic and upbeat
+   - **Leo** - Male, authoritative and strong
+4. **Choose personality** - tap person icon (👤) to select system prompt
+5. **Talk naturally**:
+   - Tap microphone button to start recording
+   - Speak your message
+   - Tap again to stop and send
+   - AI responds with voice and text
+6. **Session-based** - messages cleared when you close Voice Chat
+7. **View request logs** - tap code icon (`</>`) on AI messages to see:
+   - System prompt used
+   - Voice selected
+   - User context included
+   - Session details
 
 ### Customizing AI Behavior
 1. **Settings → AI Configuration**
@@ -455,7 +495,7 @@ YourOwnAI/
 │   │   │   │   ├── remote/
 │   │   │   │   │   ├── deepseek/         # Deepseek API client
 │   │   │   │   │   ├── openai/           # OpenAI API client (GPT-5, o1/o3)
-│   │   │   │   │   └── xai/              # x.ai Grok API client
+│   │   │   │   │   └── xai/              # x.ai Grok API + Voice Agent (WebSocket)
 │   │   │   │   ├── repository/
 │   │   │   │   │   ├── AIConfigRepository.kt
 │   │   │   │   │   ├── ApiKeyRepository.kt
@@ -484,6 +524,10 @@ YourOwnAI/
 │   │   │   │   │   ├── ChatScreen.kt
 │   │   │   │   │   ├── ChatViewModel.kt  # Context building (Memory, RAG, Deep Empathy, Swipe)
 │   │   │   │   │   └── components/       # MessageBubble, ReplyPreview, ModelSelector, etc.
+│   │   │   │   ├── voice/
+│   │   │   │   │   ├── VoiceChatScreen.kt
+│   │   │   │   │   ├── VoiceChatViewModel.kt  # Real-time voice with xAI Grok
+│   │   │   │   │   └── VoiceComponents.kt     # Waveform, voice selector, etc.
 │   │   │   │   ├── settings/
 │   │   │   │   │   ├── SettingsScreen.kt
 │   │   │   │   │   ├── SettingsViewModel.kt
@@ -534,6 +578,8 @@ YourOwnAI/
 - Downloaded local models (Qwen 2.5, Llama 3.2)
 - Downloaded embedding models (all-MiniLM, mxbai-embed)
 
+**Note:** Voice Chat messages are **NOT** stored - they exist only during the session for privacy
+
 ### What We DON'T Collect
 - ❌ No analytics or telemetry
 - ❌ No crash reporting to third parties
@@ -557,7 +603,7 @@ YourOwnAI/
 |----------|--------|-------|
 | Deepseek | Deepseek Chat, Deepseek Reasoner | Fast, cost-effective reasoning |
 | OpenAI | GPT-5, GPT-4o, GPT-4o Mini, o1/o3 | Best quality, newest models |
-| x.ai (Grok) | Grok 4.1, Grok 4, Grok 3, Grok Code | Fast reasoning and code models |
+| x.ai (Grok) | Grok 4.1, Grok 4, Grok 3, Grok Code + **Voice API** | Fast reasoning, code models + real-time voice |
 | Local | Qwen 2.5 1.7B, Llama 3.2 3B | Completely offline via llama.cpp |
 
 ### Coming Soon
@@ -601,8 +647,8 @@ YourOwnAI/
 - [x] Placeholder validation for prompts
 
 ### Phase 3: Additional Features (In Progress)
+- [x] Voice chat - real-time voice conversation with xAI Grok
 - [ ] Usage tracking (tokens, cost)
-- [ ] Voice chat (STT/TTS)
 - [ ] Export/backup conversations
 - [ ] PDF document support for RAG
 - [ ] Anthropic Claude integration
@@ -728,6 +774,18 @@ All prompts have placeholder validation to prevent breaking functionality.
 
 **Q: How does message reply (swipe) work?**
 A: Tap the Reply button on any message to add it to context. A preview appears above the input field showing what you're replying to. The AI receives this context with a configurable prompt like "Пользователь свайпнул это сообщение в контекст — специально вернулся к этому моменту: {message}". This helps the AI understand you're referring back to a specific moment in conversation.
+
+**Q: How does Voice Chat work?**
+A: Voice Chat uses xAI Grok Voice Agent API for real-time speech-to-text and text-to-speech. You speak → Grok transcribes → AI responds → Grok reads response aloud. Choose from 5 voices (Ara, Rex, Sal, Eve, Leo) and use your custom system prompts. Messages are session-only (not saved).
+
+**Q: Why aren't Voice Chat messages saved?**
+A: Voice conversations are ephemeral by design. Each session is fresh and private - when you close Voice Chat, everything is cleared. This prevents voice chat clutter in your conversation history and respects the transient nature of spoken conversation.
+
+**Q: Can I use Voice Chat offline?**
+A: No. Voice Chat requires internet connection and xAI API key. It uses Grok's real-time voice API (WebSocket) for speech recognition and synthesis.
+
+**Q: Can I change voice or personality during conversation?**
+A: Yes! You can switch voices (Ara, Rex, Sal, Eve, Leo) or system prompts anytime. The session will automatically reconnect with new settings while keeping your message history in the current session.
 
 **Q: Can I contribute?**
 A: Absolutely! Fork the repo, make changes, and submit a PR. All contributions welcome.

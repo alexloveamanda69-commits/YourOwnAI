@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     onNavigateToChat: (String) -> Unit,
+    onNavigateToVoiceChat: () -> Unit,
     onNavigateToSettings: () -> Unit,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
@@ -39,13 +40,19 @@ fun HomeScreen(
                     conversations = uiState.conversations,
                     currentConversationId = null,
                     onConversationClick = { id ->
+                        scope.launch { drawerState.close() }
                         onNavigateToChat(id)
                     },
                     onNewConversation = {
                         scope.launch {
+                            drawerState.close()
                             val newId = viewModel.createNewConversation()
                             onNavigateToChat(newId)
                         }
+                    },
+                    onVoiceChatClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToVoiceChat()
                     },
                     onDeleteConversation = viewModel::deleteConversation
                 )
@@ -79,20 +86,35 @@ fun HomeScreen(
                 )
             },
             floatingActionButton = {
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        scope.launch {
-                            val newId = viewModel.createNewConversation()
-                            onNavigateToChat(newId)
-                        }
-                    },
-                    icon = {
-                        Icon(Icons.Default.Add, "New Chat")
-                    },
-                    text = {
-                        Text("New Chat")
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    // Voice Chat FAB
+                    FloatingActionButton(
+                        onClick = onNavigateToVoiceChat,
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    ) {
+                        Icon(Icons.Default.Mic, "Voice Chat")
                     }
-                )
+                    
+                    // New Chat FAB
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                val newId = viewModel.createNewConversation()
+                                onNavigateToChat(newId)
+                            }
+                        },
+                        icon = {
+                            Icon(Icons.Default.Add, "New Chat")
+                        },
+                        text = {
+                            Text("New Chat")
+                        }
+                    )
+                }
             }
         ) { paddingValues ->
             Column(

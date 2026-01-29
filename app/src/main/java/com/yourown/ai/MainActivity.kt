@@ -14,6 +14,7 @@ import com.yourown.ai.presentation.chat.ChatScreen
 import com.yourown.ai.presentation.home.HomeScreen
 import com.yourown.ai.presentation.onboarding.OnboardingScreen
 import com.yourown.ai.presentation.settings.SettingsScreen
+import com.yourown.ai.presentation.voice.VoiceChatScreen
 import com.yourown.ai.presentation.theme.YourOwnAITheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -39,6 +40,7 @@ enum class Screen {
     ONBOARDING,
     HOME,
     CHAT,
+    VOICE_CHAT,
     SETTINGS
 }
 
@@ -85,6 +87,10 @@ fun YourOwnAIApp(settingsManager: SettingsManager) {
                             previousScreen = Screen.HOME
                             currentScreen = Screen.CHAT
                         },
+                        onNavigateToVoiceChat = {
+                            previousScreen = Screen.HOME
+                            currentScreen = Screen.VOICE_CHAT
+                        },
                         onNavigateToSettings = {
                             previousScreen = Screen.HOME
                             currentScreen = Screen.SETTINGS
@@ -101,6 +107,19 @@ fun YourOwnAIApp(settingsManager: SettingsManager) {
                         },
                         onNavigateBack = {
                             currentScreen = Screen.HOME
+                        }
+                    )
+                }
+                
+                Screen.VOICE_CHAT -> {
+                    VoiceChatScreen(
+                        onNavigateBack = {
+                            currentScreen = previousScreen ?: Screen.HOME
+                            previousScreen = null
+                        },
+                        onNavigateToSettings = {
+                            previousScreen = Screen.VOICE_CHAT
+                            currentScreen = Screen.SETTINGS
                         }
                     )
                 }
